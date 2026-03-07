@@ -55,4 +55,4 @@ else
   docker compose up -d --build
 fi
 
-echo "[INFO] 部署完成: http://127.0.0.1:8090"
+echo "[INFO] 部署完成: http://127.0.0.1:8090/health"

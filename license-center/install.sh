@@ -295,7 +295,7 @@ main() {
   fi
 
   run_deploy "$project_dir"
-  log_info "完成: http://127.0.0.1:8090"
+  log_info "完成: http://127.0.0.1:8090/health"
 }
 
 main "$@"

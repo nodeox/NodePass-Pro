@@ -68,6 +68,15 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
+	r.GET("/", func(c *gin.Context) {
+		utils.Success(c, gin.H{
+			"name":    "NodePass License Center",
+			"version": appVersion,
+			"health":  "/health",
+			"api":     "/api/v1",
+		}, "service is running")
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		utils.Success(c, gin.H{"status": "ok", "version": appVersion}, "ok")
 	})
