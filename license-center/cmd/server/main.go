@@ -12,6 +12,7 @@ import (
 	"nodepass-license-center/internal/middleware"
 	"nodepass-license-center/internal/services"
 	"nodepass-license-center/internal/utils"
+	"nodepass-license-center/internal/web"
 
 	"github.com/gin-gonic/gin"
 )
@@ -68,12 +69,20 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
+	r.GET("/console", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", web.ConsoleIndexHTML)
+	})
+	r.GET("/console/", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", web.ConsoleIndexHTML)
+	})
+
 	r.GET("/", func(c *gin.Context) {
 		utils.Success(c, gin.H{
 			"name":    "NodePass License Center",
 			"version": appVersion,
 			"health":  "/health",
 			"api":     "/api/v1",
+			"console": "/console",
 		}, "service is running")
 	})
 

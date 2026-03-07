@@ -296,6 +296,7 @@ main() {
 
   run_deploy "$project_dir"
   log_info "完成: http://127.0.0.1:8090/health"
+  log_info "管理面板: http://127.0.0.1:8090/console"
 }
 
 main "$@"

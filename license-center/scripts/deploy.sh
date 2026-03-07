@@ -56,3 +56,4 @@ else
 fi
 
 echo "[INFO] 部署完成: http://127.0.0.1:8090/health"
+echo "[INFO] 管理面板: http://127.0.0.1:8090/console"

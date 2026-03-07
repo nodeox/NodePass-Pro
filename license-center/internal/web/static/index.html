@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NodePass License Center Console</title>
+    <style>
+      :root {
+        --bg: #f4f6fb;
+        --card: #ffffff;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --primary: #2563eb;
+        --danger: #dc2626;
+        --success: #16a34a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      .hidden {
+        display: none !important;
+      }
+      .container {
+        width: min(1300px, 96vw);
+        margin: 20px auto;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+      }
+      .title {
+        margin: 0;
+        font-size: 22px;
+      }
+      .subtitle {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(160px, 1fr));
+        gap: 12px;
+      }
+      .stat {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .stat .label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .stat .value {
+        font-size: 24px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      textarea {
+        min-height: 68px;
+        resize: vertical;
+      }
+      button {
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        background: #fff;
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn-danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      .btn-ghost {
+        border-color: #cbd5e1;
+      }
+      .btn-success {
+        background: var(--success);
+        color: #fff;
+      }
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        border-bottom: 1px solid #eef2f7;
+        padding: 8px 6px;
+        font-size: 13px;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .tab {
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: #fff;
+      }
+      .tab.active {
+        background: #eff6ff;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+      }
+      .login-box {
+        width: min(420px, 94vw);
+        margin: 60px auto;
+      }
+      .msg {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .msg.error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .msg.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
+      .badge {
+        display: inline-block;
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 12px;
+      }
+      .badge.active {
+        border-color: #86efac;
+        color: #15803d;
+        background: #f0fdf4;
+      }
+      .badge.revoked,
+      .badge.expired {
+        border-color: #fecaca;
+        color: #b91c1c;
+        background: #fef2f2;
+      }
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(140px, 1fr));
+        }
+      }
+      @media (max-width: 640px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section id="loginView" class="login-box">
+      <div class="card">
+        <h1 class="title">NodePass License Center</h1>
+        <p class="subtitle">授权中心 Web 管理面板</p>
+        <div id="loginMsg" class="msg hidden"></div>
+        <div class="row" style="margin-top: 12px">
+          <div style="flex: 1 1 100%">
+            <label>用户名</label>
+            <input id="loginUsername" value="admin" />
+          </div>
+          <div style="flex: 1 1 100%">
+            <label>密码</label>
+            <input id="loginPassword" type="password" placeholder="请输入管理员密码" />
+          </div>
+          <div>
+            <button id="loginBtn" class="btn-primary">登录</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="appView" class="container hidden">
+      <div class="card" style="margin-bottom: 12px">
+        <div class="toolbar">
+          <div>
+            <h2 class="title" style="font-size: 20px">授权中心控制台</h2>
+            <p class="subtitle" id="adminInfo">-</p>
+          </div>
+          <div class="row">
+            <button id="refreshAllBtn" class="btn-ghost">刷新全部</button>
+            <button id="logoutBtn" class="btn-danger">退出登录</button>
+          </div>
+        </div>
+        <div id="appMsg" class="msg hidden"></div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="dashboard">统计</button>
+        <button class="tab" data-tab="plans">套餐</button>
+        <button class="tab" data-tab="licenses">授权码</button>
+        <button class="tab" data-tab="logs">验证日志</button>
+      </div>
+
+      <section id="tab-dashboard" class="card">
+        <div class="grid" id="statsGrid"></div>
+      </section>
+
+      <section id="tab-plans" class="card hidden">
+        <div class="toolbar">
+          <h3 style="margin: 0">套餐管理</h3>
+          <button id="reloadPlansBtn" class="btn-ghost">刷新</button>
+        </div>
+        <div class="row" style="margin-bottom: 12px">
+          <div style="flex: 1 1 180px">
+            <label>名称</label>
+            <input id="planName" placeholder="企业版" />
+          </div>
+          <div style="flex: 1 1 180px">
+            <label>编码</label>
+            <input id="planCode" placeholder="enterprise" />
+          </div>
+          <div style="flex: 1 1 120px">
+            <label>最大机器</label>
+            <input id="planMaxMachines" type="number" value="10" min="1" />
+          </div>
+          <div style="flex: 1 1 120px">
+            <label>有效天数</label>
+            <input id="planDurationDays" type="number" value="365" min="1" />
+          </div>
+          <div style="flex: 1 1 150px">
+            <label>状态</label>
+            <select id="planEnabled">
+              <option value="true">启用</option>
+              <option value="false">禁用</option>
+            </select>
+          </div>
+          <div style="flex: 1 1 100%">
+            <label>描述</label>
+            <textarea id="planDescription" placeholder="套餐说明"></textarea>
+          </div>
+          <div>
+            <button id="createPlanBtn" class="btn-primary">创建套餐</button>
+          </div>
+        </div>
+        <div style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>编码</th>
+                <th>状态</th>
+                <th>机器上限</th>
+                <th>有效天数</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="plansTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-licenses" class="card hidden">
+        <div class="toolbar">
+          <h3 style="margin: 0">授权码管理</h3>
+          <button id="reloadLicensesBtn" class="btn-ghost">刷新</button>
+        </div>
+        <div class="row" style="margin-bottom: 12px">
+          <div style="flex: 1 1 150px">
+            <label>套餐</label>
+            <select id="licensePlanSelect"></select>
+          </div>
+          <div style="flex: 1 1 180px">
+            <label>客户</label>
+            <input id="licenseCustomer" placeholder="Acme Inc" />
+          </div>
+          <div style="flex: 1 1 100px">
+            <label>数量</label>
+            <input id="licenseCount" type="number" value="1" min="1" max="200" />
+          </div>
+          <div style="flex: 1 1 120px">
+            <label>机器上限(可空)</label>
+            <input id="licenseMaxMachines" type="number" min="1" />
+          </div>
+          <div style="flex: 1 1 180px">
+            <label>过期时间(可空)</label>
+            <input id="licenseExpiresAt" type="datetime-local" />
+          </div>
+          <div style="flex: 1 1 140px">
+            <label>前缀</label>
+            <input id="licensePrefix" placeholder="NP" />
+          </div>
+          <div style="flex: 1 1 100%">
+            <label>备注</label>
+            <textarea id="licenseNote" placeholder="批次说明"></textarea>
+          </div>
+          <div>
+            <button id="generateLicenseBtn" class="btn-primary">批量生成</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-bottom: 10px">
+          <div style="flex: 1 1 160px">
+            <label>状态过滤</label>
+            <select id="licenseStatusFilter">
+              <option value="">全部</option>
+              <option value="active">active</option>
+              <option value="revoked">revoked</option>
+              <option value="expired">expired</option>
+            </select>
+          </div>
+          <div style="flex: 1 1 180px">
+            <label>客户过滤</label>
+            <input id="licenseCustomerFilter" placeholder="客户名称" />
+          </div>
+          <div>
+            <button id="applyLicenseFilterBtn" class="btn-ghost">应用筛选</button>
+          </div>
+        </div>
+
+        <div class="small" id="generatedKeys"></div>
+        <div style="overflow: auto; margin-top: 8px">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>授权码</th>
+                <th>套餐</th>
+                <th>客户</th>
+                <th>状态</th>
+                <th>过期时间</th>
+                <th>机器上限</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="licensesTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-logs" class="card hidden">
+        <div class="toolbar">
+          <h3 style="margin: 0">验证日志</h3>
+          <button id="reloadLogsBtn" class="btn-ghost">刷新</button>
+        </div>
+        <div style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>授权码</th>
+                <th>机器ID</th>
+                <th>动作</th>
+                <th>结果</th>
+                <th>原因</th>
+                <th>IP</th>
+                <th>版本</th>
+              </tr>
+            </thead>
+            <tbody id="logsTbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <script>
+      ;(() => {
+        const TOKEN_KEY = 'nodepass_license_center_token'
+        const state = {
+          token: localStorage.getItem(TOKEN_KEY) || '',
+          admin: null,
+          plans: [],
+          licenses: [],
+          logs: [],
+        }
+
+        const el = (id) => document.getElementById(id)
+        const loginView = el('loginView')
+        const appView = el('appView')
+
+        const setMessage = (target, message, isError) => {
+          const node = el(target)
+          if (!message) {
+            node.classList.add('hidden')
+            node.textContent = ''
+            return
+          }
+          node.textContent = message
+          node.className = `msg ${isError ? 'error' : 'ok'}`
+        }
+
+        const toISOStringOrNull = (value) => {
+          if (!value) return null
+          const date = new Date(value)
+          if (Number.isNaN(date.getTime())) return null
+          return date.toISOString()
+        }
+
+        const formatTime = (value) => {
+          if (!value) return '-'
+          const date = new Date(value)
+          if (Number.isNaN(date.getTime())) return value
+          return date.toLocaleString('zh-CN', { hour12: false })
+        }
+
+        const parseResponse = async (resp) => {
+          const raw = await resp.text()
+          let data = null
+          try {
+            data = raw ? JSON.parse(raw) : null
+          } catch {
+            data = null
+          }
+
+          if (!resp.ok) {
+            const msg =
+              data?.error?.message || data?.message || `HTTP ${resp.status}`
+            throw new Error(msg)
+          }
+
+          if (!data || data.success !== true) {
+            throw new Error(data?.error?.message || data?.message || '请求失败')
+          }
+
+          return data.data
+        }
+
+        const api = async (path, options = {}) => {
+          const headers = options.headers || {}
+          if (state.token) {
+            headers.Authorization = `Bearer ${state.token}`
+          }
+          if (options.body && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json'
+          }
+
+          const resp = await fetch(path, {
+            method: options.method || 'GET',
+            headers,
+            body: options.body,
+          })
+
+          if (resp.status === 401) {
+            logout(false)
+            throw new Error('登录已失效，请重新登录')
+          }
+
+          return parseResponse(resp)
+        }
+
+        const setAuth = (token) => {
+          state.token = token || ''
+          if (state.token) {
+            localStorage.setItem(TOKEN_KEY, state.token)
+          } else {
+            localStorage.removeItem(TOKEN_KEY)
+          }
+        }
+
+        const logout = (showTip = true) => {
+          setAuth('')
+          state.admin = null
+          loginView.classList.remove('hidden')
+          appView.classList.add('hidden')
+          if (showTip) {
+            setMessage('loginMsg', '已退出登录', false)
+          }
+        }
+
+        const fetchMe = async () => {
+          const me = await api('/api/v1/auth/me')
+          state.admin = me
+          el('adminInfo').textContent = `管理员：${me.username} (${me.role})`
+        }
+
+        const renderStats = async () => {
+          const stats = await api('/api/v1/stats')
+          const items = [
+            ['授权码总数', stats.license_total ?? 0],
+            ['有效授权数', stats.license_active ?? 0],
+            ['活跃绑定机器', stats.activation_total ?? 0],
+            ['今日验证次数', stats.verify_today ?? 0],
+          ]
+          el('statsGrid').innerHTML = items
+            .map(
+              ([name, value]) => `
+              <div class="stat">
+                <div class="label">${name}</div>
+                <div class="value">${value}</div>
+              </div>
+            `,
+            )
+            .join('')
+        }
+
+        const renderPlans = () => {
+          const tbody = el('plansTbody')
+          if (!state.plans.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="small">暂无套餐</td></tr>'
+            return
+          }
+
+          tbody.innerHTML = state.plans
+            .map((item) => {
+              const status = item.is_enabled
+                ? '<span class="badge active">启用</span>'
+                : '<span class="badge revoked">禁用</span>'
+              return `
+                <tr>
+                  <td>${item.id}</td>
+                  <td>${item.name || '-'}</td>
+                  <td class="mono">${item.code || '-'}</td>
+                  <td>${status}</td>
+                  <td>${item.max_machines ?? '-'}</td>
+                  <td>${item.duration_days ?? '-'}</td>
+                  <td>
+                    <button class="btn-ghost" data-action="edit-plan" data-id="${item.id}">编辑</button>
+                    <button class="btn-danger" data-action="delete-plan" data-id="${item.id}">删除</button>
+                  </td>
+                </tr>
+              `
+            })
+            .join('')
+        }
+
+        const loadPlans = async () => {
+          state.plans = await api('/api/v1/plans')
+          renderPlans()
+
+          const options =
+            '<option value="">选择套餐</option>' +
+            state.plans
+              .map(
+                (p) => `<option value="${p.id}">${p.name} (${p.code})</option>`,
+              )
+              .join('')
+          el('licensePlanSelect').innerHTML = options
+        }
+
+        const statusBadge = (status) => {
+          const cls =
+            status === 'active'
+              ? 'active'
+              : status === 'revoked' || status === 'expired'
+                ? 'revoked'
+                : ''
+          return `<span class="badge ${cls}">${status || '-'}</span>`
+        }
+
+        const renderLicenses = () => {
+          const tbody = el('licensesTbody')
+          if (!state.licenses.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="small">暂无授权码</td></tr>'
+            return
+          }
+
+          tbody.innerHTML = state.licenses
+            .map((item) => {
+              return `
+              <tr>
+                <td>${item.id}</td>
+                <td class="mono">${item.key}</td>
+                <td>${item.plan?.name || '-'}</td>
+                <td>${item.customer || '-'}</td>
+                <td>${statusBadge(item.status)}</td>
+                <td>${formatTime(item.expires_at)}</td>
+                <td>${item.max_machines ?? item.plan?.max_machines ?? '-'}</td>
+                <td>
+                  <button class="btn-ghost" data-action="view-activation" data-id="${item.id}">机器</button>
+                  <button class="btn-danger" data-action="revoke-license" data-id="${item.id}">吊销</button>
+                  <button class="btn-success" data-action="restore-license" data-id="${item.id}">恢复</button>
+                  <button class="btn-danger" data-action="delete-license" data-id="${item.id}">删除</button>
+                </td>
+              </tr>
+            `
+            })
+            .join('')
+        }
+
+        const loadLicenses = async () => {
+          const status = el('licenseStatusFilter').value.trim()
+          const customer = el('licenseCustomerFilter').value.trim()
+          const params = new URLSearchParams()
+          params.set('page', '1')
+          params.set('page_size', '100')
+          if (status) params.set('status', status)
+          if (customer) params.set('customer', customer)
+
+          const result = await api(`/api/v1/licenses?${params.toString()}`)
+          state.licenses = result.items || []
+          renderLicenses()
+        }
+
+        const renderLogs = () => {
+          const tbody = el('logsTbody')
+          if (!state.logs.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="small">暂无日志</td></tr>'
+            return
+          }
+
+          tbody.innerHTML = state.logs
+            .map(
+              (item) => `
+              <tr>
+                <td>${formatTime(item.created_at)}</td>
+                <td class="mono">${item.license_key || '-'}</td>
+                <td class="mono">${item.machine_id || '-'}</td>
+                <td>${item.action || '-'}</td>
+                <td>${statusBadge(item.result)}</td>
+                <td>${item.reason || '-'}</td>
+                <td>${item.ip_address || '-'}</td>
+                <td>${item.panel_version || '-'} / ${item.backend_version || '-'}</td>
+              </tr>
+            `,
+            )
+            .join('')
+        }
+
+        const loadLogs = async () => {
+          const result = await api('/api/v1/verify-logs?page=1&page_size=100')
+          state.logs = result.items || []
+          renderLogs()
+        }
+
+        const loadAll = async () => {
+          setMessage('appMsg', '', false)
+          await fetchMe()
+          await Promise.all([renderStats(), loadPlans(), loadLicenses(), loadLogs()])
+        }
+
+        const showTab = (tab) => {
+          document.querySelectorAll('.tab').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.tab === tab)
+          })
+          document
+            .querySelectorAll('section[id^="tab-"]')
+            .forEach((section) => section.classList.add('hidden'))
+          const target = document.getElementById(`tab-${tab}`)
+          if (target) target.classList.remove('hidden')
+        }
+
+        const onLogin = async () => {
+          const username = el('loginUsername').value.trim()
+          const password = el('loginPassword').value
+
+          if (!username || !password) {
+            setMessage('loginMsg', '请输入用户名和密码', true)
+            return
+          }
+
+          try {
+            setMessage('loginMsg', '', false)
+            const data = await api('/api/v1/auth/login', {
+              method: 'POST',
+              body: JSON.stringify({ username, password }),
+            })
+            setAuth(data.token)
+            loginView.classList.add('hidden')
+            appView.classList.remove('hidden')
+            await loadAll()
+          } catch (error) {
+            setMessage('loginMsg', error.message || '登录失败', true)
+          }
+        }
+
+        const createPlan = async () => {
+          const payload = {
+            name: el('planName').value.trim(),
+            code: el('planCode').value.trim(),
+            description: el('planDescription').value.trim(),
+            is_enabled: el('planEnabled').value === 'true',
+            max_machines: Number(el('planMaxMachines').value || 1),
+            duration_days: Number(el('planDurationDays').value || 365),
+          }
+
+          if (!payload.name || !payload.code) {
+            setMessage('appMsg', '套餐名称和编码不能为空', true)
+            return
+          }
+
+          try {
+            await api('/api/v1/plans', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            })
+            setMessage('appMsg', '套餐创建成功', false)
+            await loadPlans()
+          } catch (error) {
+            setMessage('appMsg', error.message || '创建套餐失败', true)
+          }
+        }
+
+        const generateLicenses = async () => {
+          const planID = Number(el('licensePlanSelect').value || 0)
+          const customer = el('licenseCustomer').value.trim()
+          const count = Number(el('licenseCount').value || 1)
+          const maxMachinesRaw = el('licenseMaxMachines').value.trim()
+          const expiresAt = toISOStringOrNull(el('licenseExpiresAt').value)
+          const note = el('licenseNote').value.trim()
+          const prefix = el('licensePrefix').value.trim()
+
+          if (!planID || !customer) {
+            setMessage('appMsg', '请选择套餐并填写客户名称', true)
+            return
+          }
+
+          const payload = {
+            plan_id: planID,
+            customer,
+            count,
+            note,
+            prefix,
+          }
+          if (expiresAt) payload.expires_at = expiresAt
+          if (maxMachinesRaw) payload.max_machines = Number(maxMachinesRaw)
+
+          try {
+            const data = await api('/api/v1/licenses/generate', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            })
+            setMessage('appMsg', `已生成 ${data.length || 0} 个授权码`, false)
+            el('generatedKeys').innerHTML =
+              data && data.length
+                ? `<div class="small">新生成授权码：${data
+                    .map((item) => `<span class="mono">${item.key}</span>`)
+                    .join(', ')}</div>`
+                : ''
+            await loadLicenses()
+          } catch (error) {
+            setMessage('appMsg', error.message || '生成授权码失败', true)
+          }
+        }
+
+        const handlePlanAction = async (action, id) => {
+          const plan = state.plans.find((p) => String(p.id) === String(id))
+          if (!plan) return
+
+          if (action === 'delete-plan') {
+            if (!confirm(`确认删除套餐 ${plan.name} 吗？`)) return
+            try {
+              await api(`/api/v1/plans/${id}`, { method: 'DELETE' })
+              setMessage('appMsg', '套餐删除成功', false)
+              await loadPlans()
+            } catch (error) {
+              setMessage('appMsg', error.message || '删除套餐失败', true)
+            }
+            return
+          }
+
+          if (action === 'edit-plan') {
+            const name = prompt('套餐名称', plan.name || '')
+            if (!name) return
+            const code = prompt('套餐编码', plan.code || '')
+            if (!code) return
+            const maxMachines = Number(
+              prompt('最大机器数', String(plan.max_machines ?? 1)) || 1,
+            )
+            const durationDays = Number(
+              prompt('有效天数', String(plan.duration_days ?? 365)) || 365,
+            )
+            const isEnabled =
+              confirm('点击“确定”设为启用，点击“取消”设为禁用。')
+
+            try {
+              await api(`/api/v1/plans/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  ...plan,
+                  name,
+                  code,
+                  max_machines: maxMachines,
+                  duration_days: durationDays,
+                  is_enabled: isEnabled,
+                }),
+              })
+              setMessage('appMsg', '套餐更新成功', false)
+              await loadPlans()
+            } catch (error) {
+              setMessage('appMsg', error.message || '更新套餐失败', true)
+            }
+          }
+        }
+
+        const handleLicenseAction = async (action, id) => {
+          const target = state.licenses.find((item) => String(item.id) === String(id))
+          if (!target) return
+
+          try {
+            if (action === 'revoke-license') {
+              await api(`/api/v1/licenses/${id}/revoke`, { method: 'POST' })
+              setMessage('appMsg', '已吊销授权码', false)
+            } else if (action === 'restore-license') {
+              await api(`/api/v1/licenses/${id}/restore`, { method: 'POST' })
+              setMessage('appMsg', '已恢复授权码', false)
+            } else if (action === 'delete-license') {
+              if (!confirm(`确认删除授权码 ${target.key} 吗？`)) return
+              await api(`/api/v1/licenses/${id}`, { method: 'DELETE' })
+              setMessage('appMsg', '已删除授权码', false)
+            } else if (action === 'view-activation') {
+              const activations = await api(`/api/v1/licenses/${id}/activations`)
+              if (!activations || !activations.length) {
+                alert('该授权码暂无机器绑定')
+                return
+              }
+              const text = activations
+                .map(
+                  (a) =>
+                    `#${a.id} ${a.machine_id} (${a.machine_name || '-'}) IP:${a.ip_address || '-'} 活跃:${a.is_active ? 'Y' : 'N'}`,
+                )
+                .join('\n')
+              alert(text)
+              return
+            }
+            await loadLicenses()
+          } catch (error) {
+            setMessage('appMsg', error.message || '授权码操作失败', true)
+          }
+        }
+
+        const bindEvents = () => {
+          el('loginBtn').addEventListener('click', onLogin)
+          el('logoutBtn').addEventListener('click', () => logout(true))
+          el('refreshAllBtn').addEventListener('click', () =>
+            loadAll().catch((err) => setMessage('appMsg', err.message, true)),
+          )
+
+          document.querySelectorAll('.tab').forEach((tabBtn) => {
+            tabBtn.addEventListener('click', () => showTab(tabBtn.dataset.tab))
+          })
+
+          el('reloadPlansBtn').addEventListener('click', () =>
+            loadPlans().catch((err) => setMessage('appMsg', err.message, true)),
+          )
+          el('createPlanBtn').addEventListener('click', createPlan)
+
+          el('reloadLicensesBtn').addEventListener('click', () =>
+            loadLicenses().catch((err) => setMessage('appMsg', err.message, true)),
+          )
+          el('applyLicenseFilterBtn').addEventListener('click', () =>
+            loadLicenses().catch((err) => setMessage('appMsg', err.message, true)),
+          )
+          el('generateLicenseBtn').addEventListener('click', generateLicenses)
+
+          el('reloadLogsBtn').addEventListener('click', () =>
+            loadLogs().catch((err) => setMessage('appMsg', err.message, true)),
+          )
+
+          el('plansTbody').addEventListener('click', (event) => {
+            const target = event.target.closest('button[data-action]')
+            if (!target) return
+            handlePlanAction(target.dataset.action, target.dataset.id)
+          })
+
+          el('licensesTbody').addEventListener('click', (event) => {
+            const target = event.target.closest('button[data-action]')
+            if (!target) return
+            handleLicenseAction(target.dataset.action, target.dataset.id)
+          })
+        }
+
+        const bootstrap = async () => {
+          bindEvents()
+          if (!state.token) {
+            return
+          }
+
+          try {
+            loginView.classList.add('hidden')
+            appView.classList.remove('hidden')
+            await loadAll()
+          } catch (error) {
+            logout(false)
+            setMessage('loginMsg', error.message || '登录已失效，请重新登录', true)
+          }
+        }
+
+        bootstrap()
+      })()
+    </script>
+  </body>
+</html>
