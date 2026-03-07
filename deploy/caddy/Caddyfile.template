@@ -5,6 +5,19 @@ __EMAIL_BLOCK__
 __FRONTEND_DOMAIN__ {
     encode zstd gzip
 
+    @nodeclient_install path /nodeclient-install.sh
+    handle @nodeclient_install {
+        root * /srv/nodeclient
+        rewrite * /install.sh
+        file_server
+    }
+
+    @nodeclient_downloads path /downloads /downloads/*
+    handle @nodeclient_downloads {
+        root * /srv/nodeclient
+        file_server
+    }
+
     @api path /api/* /ws*
     handle @api {
         reverse_proxy backend:8080

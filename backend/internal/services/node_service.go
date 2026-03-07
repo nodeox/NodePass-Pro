@@ -192,7 +192,7 @@ func (s *NodeService) CreateNode(userID uint, req *CreateNodeRequest) (*CreateNo
 	}
 
 	installCmd := fmt.Sprintf(
-		"curl -fsSL https://%s/install.sh | bash -s -- --hub-url %s --token %s",
+		"curl -fsSL https://%s/nodeclient-install.sh | bash -s -- --hub-url %s --token %s",
 		panelHost, hubURL, plainToken,
 	)
 
