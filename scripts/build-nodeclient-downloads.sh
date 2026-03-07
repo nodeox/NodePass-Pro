@@ -59,7 +59,7 @@ build_with_docker_go() {
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace/nodeclient \
     "$GO_IMAGE" \
-    /bin/sh -lc "go mod download && CGO_ENABLED=0 GOOS=${goos} GOARCH=${goarch} go build -trimpath -ldflags='-s -w' -o ${output_file} ./cmd/client"
+    /bin/sh -lc "if [ -x /usr/local/go/bin/go ]; then GO_BIN=/usr/local/go/bin/go; elif command -v go >/dev/null 2>&1; then GO_BIN=\$(command -v go); else echo '[ERROR] 容器内未找到 go 可执行文件' >&2; exit 1; fi; \"\${GO_BIN}\" version >/dev/null && \"\${GO_BIN}\" mod download && CGO_ENABLED=0 GOOS=${goos} GOARCH=${goarch} \"\${GO_BIN}\" build -trimpath -ldflags='-s -w' -o ${output_file} ./cmd/client"
 }
 
 build_target() {
