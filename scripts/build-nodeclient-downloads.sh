@@ -7,6 +7,8 @@ ROOT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 NODECLIENT_DIR="${ROOT_DIR}/nodeclient"
 OUTPUT_DIR="${ROOT_DIR}/deploy/nodeclient/downloads"
 GO_IMAGE="${GO_IMAGE:-golang:1.21-bookworm}"
+NODECLIENT_VERSION_FILE="${NODECLIENT_DIR}/VERSION"
+NODECLIENT_VERSION="dev"
 
 log_info() {
   echo "[INFO] $*"
@@ -14,6 +16,12 @@ log_info() {
 
 log_error() {
   echo "[ERROR] $*" >&2
+}
+
+read_nodeclient_version() {
+  if [[ -f "$NODECLIENT_VERSION_FILE" ]]; then
+    NODECLIENT_VERSION="$(tr -d '[:space:]' <"$NODECLIENT_VERSION_FILE")"
+  fi
 }
 
 checksum_file() {
@@ -42,11 +50,12 @@ build_with_local_go() {
   local goos="$1"
   local goarch="$2"
   local output_file="$3"
+  local ldflags="-s -w -X nodepass-pro/nodeclient/internal/agent.clientVersion=${NODECLIENT_VERSION}"
 
   (
     cd "$NODECLIENT_DIR"
     CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-      go build -trimpath -ldflags="-s -w" -o "$output_file" ./cmd/client
+      go build -trimpath -ldflags="$ldflags" -o "$output_file" ./cmd/client
   )
 }
 
@@ -54,12 +63,13 @@ build_with_docker_go() {
   local goos="$1"
   local goarch="$2"
   local output_file="$3"
+  local ldflags="-s -w -X nodepass-pro/nodeclient/internal/agent.clientVersion=${NODECLIENT_VERSION}"
 
   docker run --rm \
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace/nodeclient \
     "$GO_IMAGE" \
-    /bin/sh -lc "if [ -x /usr/local/go/bin/go ]; then GO_BIN=/usr/local/go/bin/go; elif command -v go >/dev/null 2>&1; then GO_BIN=\$(command -v go); else echo '[ERROR] 容器内未找到 go 可执行文件' >&2; exit 1; fi; \"\${GO_BIN}\" version >/dev/null && \"\${GO_BIN}\" mod download && CGO_ENABLED=0 GOOS=${goos} GOARCH=${goarch} \"\${GO_BIN}\" build -trimpath -ldflags='-s -w' -o ${output_file} ./cmd/client"
+    /bin/sh -lc "if [ -x /usr/local/go/bin/go ]; then GO_BIN=/usr/local/go/bin/go; elif command -v go >/dev/null 2>&1; then GO_BIN=\$(command -v go); else echo '[ERROR] 容器内未找到 go 可执行文件' >&2; exit 1; fi; \"\${GO_BIN}\" version >/dev/null && \"\${GO_BIN}\" mod download && CGO_ENABLED=0 GOOS=${goos} GOARCH=${goarch} \"\${GO_BIN}\" build -trimpath -ldflags '${ldflags}' -o ${output_file} ./cmd/client"
 }
 
 build_target() {
@@ -85,7 +95,9 @@ main() {
     exit 1
   fi
 
+  read_nodeclient_version
   mkdir -p "$OUTPUT_DIR"
+  log_info "nodeclient 版本: ${NODECLIENT_VERSION}"
 
   build_target "linux" "amd64"
   build_target "linux" "arm64"

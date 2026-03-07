@@ -96,6 +96,11 @@ cd NodePass-Pro/backend
 go build -o ./bin/server ./cmd/server
 ```
 
+## 版本
+
+- 后端模块版本文件：`backend/VERSION`
+- 运行中的后端版本可通过 `GET /health` 或 `GET /api/v1/ping` 返回值查看
+
 ## 快速验证
 
 ```bash

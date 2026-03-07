@@ -43,3 +43,17 @@ sha256sum nodeclient-linux-arm64 > nodeclient-linux-arm64.sha256
 - `https://<前端域名>/nodeclient-install.sh`
 - `https://<前端域名>/downloads/nodeclient-linux-amd64`
 - `https://<前端域名>/downloads/nodeclient-linux-arm64`
+
+## 节点端升级/卸载
+
+升级：
+
+```bash
+curl -fsSL https://<前端域名>/nodeclient-install.sh | bash -s -- --upgrade --hub-url https://<前端域名>
+```
+
+卸载：
+
+```bash
+curl -fsSL https://<前端域名>/nodeclient-install.sh | bash -s -- --uninstall
+```

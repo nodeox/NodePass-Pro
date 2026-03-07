@@ -5,6 +5,8 @@ REPO_URL="https://github.com/nodeox/NodePass-Pro.git"
 BRANCH="main"
 INSTALL_DIR="/opt/NodePass-Pro"
 INTERACTIVE_MODE="auto" # auto / true / false
+ACTION="install" # install / upgrade / uninstall / version
+UNINSTALL_KEEP_DATA="false"
 
 PKG_MANAGER=""
 SUDO_CMD=""
@@ -47,11 +49,27 @@ JWT_EXPIRE_TIME="168"
 BACKEND_CONFIG_FILE_REL="./backend/configs/config.runtime.yaml"
 BACKEND_CONFIG_FILE_ABS=""
 
+LICENSE_VERIFY_URL="${LICENSE_VERIFY_URL:-https://license.nodepass.pro/api/v1/license/verify}"
+LICENSE_KEY="${LICENSE_KEY:-${NODEPASS_LICENSE_KEY:-}}"
+LICENSE_MACHINE_ID=""
+LICENSE_VERIFIED="false"
+LICENSE_VERIFY_RESULT="{}"
+LICENSE_ID=""
+LICENSE_CUSTOMER=""
+LICENSE_PLAN=""
+LICENSE_EXPIRES_AT=""
+
 CREATE_ADMIN="auto"
 ADMIN_USERNAME="admin"
 ADMIN_EMAIL="admin@example.com"
 ADMIN_PASSWORD=""
 ADMIN_CREATED="false"
+
+PANEL_VERSION="dev"
+BACKEND_VERSION="dev"
+FRONTEND_VERSION="dev"
+NODECLIENT_VERSION="dev"
+REPO_COMMIT="unknown"
 
 log_info() {
   echo "[INFO] $*"
@@ -74,9 +92,17 @@ NodePass Pro 远程一键部署引导脚本（自动检测环境 + 交互式部�
   bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) [引导参数] [deploy 参数]
 
 引导参数:
+  --install                安装（默认）
+  --upgrade                升级到远端最新版本
+  --uninstall              卸载（停止容器并删除安装目录）
+  --version                显示已安装/远端版本信息
+  --keep-data              卸载时保留安装目录
   --install-dir <目录>      安装目录（默认: /opt/NodePass-Pro）
   --repo <地址>             仓库地址（默认: https://github.com/nodeox/NodePass-Pro.git）
   --branch <分支>           分支名（默认: main）
+  --license-key <授权码>    授权码（安装/升级必填）
+  --license-server <URL>    授权验证接口（默认: https://license.nodepass.pro/api/v1/license/verify）
+  --machine-id <ID>         指定机器标识（可选，默认自动检测）
   --interactive             强制交互式部署
   --non-interactive         关闭交互，直接透传参数给 scripts/deploy.sh
   --admin-username <用户名> 指定管理员用户名（可配合 --non-interactive）
@@ -90,13 +116,19 @@ NodePass Pro 远程一键部署引导脚本（自动检测环境 + 交互式部�
   bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh)
 
   # 非交互，直接透传 deploy 参数
-  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --non-interactive --with-caddy --frontend-domain panel.example.com --email admin@example.com
+  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --non-interactive --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --email admin@example.com
 
   # 非交互，部署后自动创建管理员
-  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --non-interactive --admin-username admin --admin-email admin@example.com --admin-password 'YourStrongPassword'
+  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --non-interactive --license-key NP-XXXX-XXXX --admin-username admin --admin-email admin@example.com --admin-password 'YourStrongPassword'
 
   # 停止服务
   bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --non-interactive --down
+
+  # 升级
+  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --upgrade --license-key NP-XXXX-XXXX
+
+  # 卸载
+  bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --uninstall
 EOF
 }
 
@@ -134,6 +166,59 @@ sanitize_domain() {
 
 yaml_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+read_version_file() {
+  local file="$1"
+  local default_value="$2"
+  if [[ -f "$file" ]]; then
+    local value
+    value="$(tr -d '[:space:]' <"$file")"
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return
+    fi
+  fi
+  echo "$default_value"
+}
+
+load_repo_versions() {
+  local target_dir="${1:-$INSTALL_DIR}"
+  PANEL_VERSION="$(read_version_file "${target_dir}/VERSION" "dev")"
+  BACKEND_VERSION="$(read_version_file "${target_dir}/backend/VERSION" "$PANEL_VERSION")"
+  FRONTEND_VERSION="$(read_version_file "${target_dir}/frontend/VERSION" "$PANEL_VERSION")"
+  NODECLIENT_VERSION="$(read_version_file "${target_dir}/nodeclient/VERSION" "$PANEL_VERSION")"
+  if [[ -d "${target_dir}/.git" ]]; then
+    REPO_COMMIT="$(git -C "${target_dir}" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+  else
+    REPO_COMMIT="unknown"
+  fi
+}
+
+print_version_block() {
+  local title="$1"
+  echo "----- ${title} -----"
+  echo "panel: ${PANEL_VERSION}"
+  echo "backend: ${BACKEND_VERSION}"
+  echo "frontend: ${FRONTEND_VERSION}"
+  echo "nodeclient: ${NODECLIENT_VERSION}"
+  echo "commit: ${REPO_COMMIT}"
+}
+
+detect_machine_id() {
+  if [[ -n "$LICENSE_MACHINE_ID" ]]; then
+    echo "$LICENSE_MACHINE_ID"
+    return
+  fi
+  if [[ -f /etc/machine-id ]]; then
+    tr -d '[:space:]' </etc/machine-id
+    return
+  fi
+  if [[ -f /var/lib/dbus/machine-id ]]; then
+    tr -d '[:space:]' </var/lib/dbus/machine-id
+    return
+  fi
+  hostname
 }
 
 contains_passthrough_arg() {
@@ -279,6 +364,7 @@ ensure_environment() {
   detect_pkg_manager
   ensure_tool git git
   ensure_tool curl curl ca-certificates
+  ensure_tool python3 python3
   install_docker_engine
   ensure_docker_service
   ensure_docker_compose
@@ -323,6 +409,138 @@ prepare_repo() {
     run_fs rm -rf "${INSTALL_DIR}"
     run_fs git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${INSTALL_DIR}"
   fi
+}
+
+ensure_existing_installation() {
+  if ! run_fs test -d "${INSTALL_DIR}/.git"; then
+    log_error "未检测到已安装仓库: ${INSTALL_DIR}"
+    exit 1
+  fi
+}
+
+show_version_info() {
+  require_command git
+  if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    load_repo_versions "${INSTALL_DIR}"
+    print_version_block "本机已安装版本"
+    return
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' RETURN
+  log_info "本机未安装，拉取远端版本信息..."
+  git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${tmp_dir}" >/dev/null 2>&1
+  load_repo_versions "${tmp_dir}"
+  print_version_block "远端最新版本"
+}
+
+uninstall_stack() {
+  detect_sudo
+
+  if [[ ! -d "${INSTALL_DIR}" ]]; then
+    log_warn "安装目录不存在，无需卸载: ${INSTALL_DIR}"
+    exit 0
+  fi
+
+  if [[ -f "${INSTALL_DIR}/scripts/deploy.sh" ]]; then
+    log_info "停止并移除容器..."
+    if [[ -n "$SUDO_CMD" ]]; then
+      (cd "${INSTALL_DIR}" && run_root ./scripts/deploy.sh --down) || true
+    else
+      (cd "${INSTALL_DIR}" && ./scripts/deploy.sh --down) || true
+    fi
+  fi
+
+  if [[ "${UNINSTALL_KEEP_DATA}" == "true" ]]; then
+    log_info "保留安装目录: ${INSTALL_DIR}"
+  else
+    log_info "删除安装目录: ${INSTALL_DIR}"
+    if [[ -n "$SUDO_CMD" ]]; then
+      run_root rm -rf "${INSTALL_DIR}"
+    else
+      rm -rf "${INSTALL_DIR}"
+    fi
+  fi
+
+  log_info "卸载完成。"
+}
+
+require_license_key() {
+  if [[ -z "$LICENSE_KEY" ]]; then
+    log_error "缺少授权码，请使用 --license-key 或环境变量 LICENSE_KEY/NODEPASS_LICENSE_KEY 提供。"
+    exit 1
+  fi
+}
+
+verify_license_or_exit() {
+  local verify_script="${INSTALL_DIR}/scripts/license-verify.py"
+  if [[ ! -f "$verify_script" ]]; then
+    log_error "未找到授权验证脚本: $verify_script"
+    exit 1
+  fi
+
+  require_license_key
+  LICENSE_MACHINE_ID="$(detect_machine_id)"
+  load_repo_versions "${INSTALL_DIR}"
+
+  log_info "开始授权校验..."
+  local verify_output=""
+  if ! verify_output="$(python3 "$verify_script" \
+    --verify-url "$LICENSE_VERIFY_URL" \
+    --license-key "$LICENSE_KEY" \
+    --machine-id "$LICENSE_MACHINE_ID" \
+    --action "$ACTION" \
+    --panel-version "$PANEL_VERSION" \
+    --backend-version "$BACKEND_VERSION" \
+    --frontend-version "$FRONTEND_VERSION" \
+    --nodeclient-version "$NODECLIENT_VERSION" \
+    --branch "$BRANCH" \
+    --commit "$REPO_COMMIT" \
+    --timeout 20 2>&1)"; then
+    log_error "授权校验失败: ${verify_output}"
+    exit 1
+  fi
+
+  LICENSE_VERIFY_RESULT="$verify_output"
+  LICENSE_VERIFIED="true"
+
+  LICENSE_ID="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("license_id",""))' "$LICENSE_VERIFY_RESULT" 2>/dev/null || true)"
+  LICENSE_CUSTOMER="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("customer",""))' "$LICENSE_VERIFY_RESULT" 2>/dev/null || true)"
+  LICENSE_PLAN="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("plan",""))' "$LICENSE_VERIFY_RESULT" 2>/dev/null || true)"
+  LICENSE_EXPIRES_AT="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("expires_at",""))' "$LICENSE_VERIFY_RESULT" 2>/dev/null || true)"
+
+  log_info "授权校验通过。license_id=${LICENSE_ID:-unknown}, plan=${LICENSE_PLAN:-unknown}, customer=${LICENSE_CUSTOMER:-unknown}"
+}
+
+write_license_snapshot() {
+  if [[ "$LICENSE_VERIFIED" != "true" ]]; then
+    return
+  fi
+
+  local snapshot_file="${INSTALL_DIR}/.nodepass-license"
+  local timestamp
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+  local temp_file
+  temp_file="$(mktemp)"
+  cat >"$temp_file" <<EOF
+timestamp=${timestamp}
+machine_id=${LICENSE_MACHINE_ID}
+license_id=${LICENSE_ID}
+customer=${LICENSE_CUSTOMER}
+plan=${LICENSE_PLAN}
+expires_at=${LICENSE_EXPIRES_AT}
+verify_url=${LICENSE_VERIFY_URL}
+panel=${PANEL_VERSION}
+backend=${BACKEND_VERSION}
+frontend=${FRONTEND_VERSION}
+nodeclient=${NODECLIENT_VERSION}
+commit=${REPO_COMMIT}
+EOF
+
+  run_fs cp "$temp_file" "$snapshot_file"
+  rm -f "$temp_file"
 }
 
 prompt_with_default() {
@@ -409,6 +627,14 @@ run_interactive_wizard() {
 
   INSTALL_DIR="$(prompt_with_default "安装目录" "$INSTALL_DIR")"
   FRONTEND_BIND="$(prompt_with_default "前端本机监听地址（用于本地反向代理）" "$FRONTEND_BIND")"
+  LICENSE_VERIFY_URL="$(prompt_with_default "授权验证接口" "$LICENSE_VERIFY_URL")"
+  while true; do
+    read -r -p "请输入授权码（安装前强制校验）: " LICENSE_KEY
+    if [[ -n "$LICENSE_KEY" ]]; then
+      break
+    fi
+    echo "授权码不能为空。"
+  done
 
   if prompt_yes_no "是否启用 Caddy 自动 HTTPS 反代" "y"; then
     WITH_CADDY=true
@@ -653,6 +879,7 @@ bootstrap_admin_account() {
 }
 
 print_success_summary() {
+  load_repo_versions "${INSTALL_DIR}"
   local frontend_url="http://${FRONTEND_BIND}"
   local backend_url="http://127.0.0.1:8080/api/v1"
   local node_install=""
@@ -669,6 +896,11 @@ print_success_summary() {
   echo ""
   echo "================ 部署完成 ================"
   echo "安装目录: ${INSTALL_DIR}"
+  echo "版本信息: panel=${PANEL_VERSION}, backend=${BACKEND_VERSION}, frontend=${FRONTEND_VERSION}, nodeclient=${NODECLIENT_VERSION}"
+  echo "提交版本: ${REPO_COMMIT}"
+  if [[ "$LICENSE_VERIFIED" == "true" ]]; then
+    echo "授权信息: license_id=${LICENSE_ID:-unknown}, plan=${LICENSE_PLAN:-unknown}, customer=${LICENSE_CUSTOMER:-unknown}, expires_at=${LICENSE_EXPIRES_AT:-unknown}"
+  fi
   echo "前端地址: ${frontend_url}"
   echo "后端 API: ${backend_url}"
   if [[ -n "$node_install" ]]; then
@@ -706,18 +938,73 @@ invoke_deploy() {
     (cd "$INSTALL_DIR" && run_root env \
       BACKEND_CONFIG_FILE="$backend_config_env" \
       FRONTEND_BIND="$FRONTEND_BIND" \
+      LICENSE_KEY="$LICENSE_KEY" \
+      LICENSE_VERIFY_URL="$LICENSE_VERIFY_URL" \
+      LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
+      LICENSE_ACTION="$ACTION" \
+      LICENSE_VERIFIED="$LICENSE_VERIFIED" \
       "$deploy_script" "${PASSTHROUGH_ARGS[@]}")
   else
     (cd "$INSTALL_DIR" && \
       BACKEND_CONFIG_FILE="$backend_config_env" \
       FRONTEND_BIND="$FRONTEND_BIND" \
+      LICENSE_KEY="$LICENSE_KEY" \
+      LICENSE_VERIFY_URL="$LICENSE_VERIFY_URL" \
+      LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
+      LICENSE_ACTION="$ACTION" \
+      LICENSE_VERIFIED="$LICENSE_VERIFIED" \
       "$deploy_script" "${PASSTHROUGH_ARGS[@]}")
   fi
+}
+
+write_deployed_version_snapshot() {
+  load_repo_versions "${INSTALL_DIR}"
+  local snapshot_file="${INSTALL_DIR}/.nodepass-version"
+  local timestamp
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+  local temp_file
+  temp_file="$(mktemp)"
+  cat >"$temp_file" <<EOF
+timestamp=${timestamp}
+branch=${BRANCH}
+commit=${REPO_COMMIT}
+panel=${PANEL_VERSION}
+backend=${BACKEND_VERSION}
+frontend=${FRONTEND_VERSION}
+nodeclient=${NODECLIENT_VERSION}
+EOF
+
+  run_fs cp "$temp_file" "$snapshot_file"
+  rm -f "$temp_file"
 }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --install)
+        ACTION="install"
+        shift
+        ;;
+      --upgrade)
+        ACTION="upgrade"
+        INTERACTIVE_MODE="false"
+        shift
+        ;;
+      --uninstall)
+        ACTION="uninstall"
+        INTERACTIVE_MODE="false"
+        shift
+        ;;
+      --version)
+        ACTION="version"
+        INTERACTIVE_MODE="false"
+        shift
+        ;;
+      --keep-data)
+        UNINSTALL_KEEP_DATA="true"
+        shift
+        ;;
       --install-dir)
         INSTALL_DIR="${2:-}"
         shift 2
@@ -728,6 +1015,18 @@ parse_args() {
         ;;
       --branch)
         BRANCH="${2:-}"
+        shift 2
+        ;;
+      --license-key)
+        LICENSE_KEY="${2:-}"
+        shift 2
+        ;;
+      --license-server)
+        LICENSE_VERIFY_URL="${2:-}"
+        shift 2
+        ;;
+      --machine-id)
+        LICENSE_MACHINE_ID="${2:-}"
         shift 2
         ;;
       --interactive)
@@ -770,6 +1069,9 @@ parse_args() {
 }
 
 should_run_interactive() {
+  if [[ "$ACTION" != "install" ]]; then
+    return 1
+  fi
   if [[ "$INTERACTIVE_MODE" == "true" ]]; then
     return 0
   fi
@@ -787,6 +1089,17 @@ should_run_interactive() {
 
 main() {
   parse_args "$@"
+
+  if [[ "$ACTION" == "uninstall" ]]; then
+    uninstall_stack
+    exit 0
+  fi
+
+  if [[ "$ACTION" == "version" ]]; then
+    show_version_info
+    exit 0
+  fi
+
   ensure_environment
   local interactive_enabled="false"
   local down_mode="false"
@@ -800,7 +1113,18 @@ main() {
     run_interactive_wizard
   fi
 
+  if [[ "$ACTION" == "upgrade" ]]; then
+    ensure_existing_installation
+    load_repo_versions "${INSTALL_DIR}"
+    print_version_block "升级前版本"
+  fi
+
   prepare_repo
+
+  if [[ "$ACTION" == "upgrade" ]]; then
+    load_repo_versions "${INSTALL_DIR}"
+    print_version_block "升级后版本（代码）"
+  fi
 
   if [[ "$interactive_enabled" == "true" ]]; then
     render_backend_config
@@ -815,7 +1139,13 @@ main() {
     log_info "使用非交互模式，透传参数给 deploy.sh: ${PASSTHROUGH_ARGS[*]:-(无)}"
   fi
 
+  if [[ "$down_mode" != "true" ]]; then
+    verify_license_or_exit
+  fi
+
   invoke_deploy
+  write_deployed_version_snapshot
+  write_license_snapshot
 
   if [[ "$down_mode" == "true" ]]; then
     log_info "已完成下线操作。"

@@ -19,6 +19,7 @@ import (
 	"nodepass-panel/backend/internal/models"
 	"nodepass-panel/backend/internal/services"
 	"nodepass-panel/backend/internal/utils"
+	"nodepass-panel/backend/internal/version"
 	panelws "nodepass-panel/backend/internal/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -82,6 +83,7 @@ func main() {
 			zap.String("addr", server.Addr),
 			zap.String("mode", cfg.Server.Mode),
 			zap.String("db_type", cfg.Database.Type),
+			zap.String("version", version.Version),
 		)
 		if runErr := server.ListenAndServe(); runErr != nil && !errors.Is(runErr, http.ErrServerClosed) {
 			zap.L().Fatal("服务启动失败", zap.Error(runErr))
@@ -118,12 +120,12 @@ func setupRouter() (*gin.Engine, *panelws.Hub) {
 	r.Use(middleware.RateLimit(50, 100))
 
 	r.GET("/health", func(c *gin.Context) {
-		utils.Success(c, gin.H{"status": "ok"})
+		utils.Success(c, gin.H{"status": "ok", "version": version.Version})
 	})
 
 	api := r.Group("/api/v1")
 	api.GET("/ping", func(c *gin.Context) {
-		utils.Success(c, gin.H{"message": "pong"})
+		utils.Success(c, gin.H{"message": "pong", "version": version.Version})
 	})
 
 	nodeHandler := handlers.NewNodeHandler(database.DB)

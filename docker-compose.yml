@@ -34,6 +34,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${BACKEND_VERSION:-dev}
     container_name: nodepass-backend
     depends_on:
       postgres:
@@ -50,6 +52,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${FRONTEND_VERSION:-dev}
     container_name: nodepass-frontend
     depends_on:
       - backend

@@ -1,0 +1,21 @@
+server:
+  port: "8090"
+  mode: "release"
+
+database:
+  type: "postgres" # sqlite / mysql / postgres
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  db_name: "nodepass_license"
+  dsn: "host=postgres port=5432 user=postgres password=postgres dbname=nodepass_license sslmode=disable TimeZone=UTC"
+
+jwt:
+  secret: "change-this-license-secret"
+  expire_hours: 24
+
+admin:
+  username: "admin"
+  email: "admin@license.local"
+  password: "ChangeMe123!"

@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: license-center-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nodepass_license
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nodepass_license"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  license-center:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: license-center
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  pg_data:

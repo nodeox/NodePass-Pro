@@ -22,6 +22,11 @@ docker compose up -d --build frontend
 - Nginx 会将 `/api/*` 与 `/ws` 反向代理到 `backend:8080`；
 - SPA 路由通过 `try_files ... /index.html` 回退，支持前端路由直达。
 
+## 版本
+
+- 前端模块版本文件：`frontend/VERSION`
+- 容器构建后会在静态资源目录生成 `/version.json`
+
 ---
 
 # React + TypeScript + Vite

@@ -40,3 +40,21 @@ sudo bash ./scripts/install.sh --uninstall
 ```bash
 sudo bash ./scripts/install.sh --uninstall --install-dir /opt/nodeclient
 ```
+
+## 升级
+
+```bash
+sudo bash ./scripts/install.sh --upgrade
+```
+
+若配置文件不存在或需指定面板地址：
+
+```bash
+sudo bash ./scripts/install.sh --upgrade --hub-url https://your-panel.com
+```
+
+## 查看客户端版本
+
+```bash
+sudo bash ./scripts/install.sh --version
+```

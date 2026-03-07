@@ -14,6 +14,15 @@ NO_BUILD=false
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
 AUTO_BUILD_NODECLIENT=true
+PANEL_VERSION="${PANEL_VERSION:-}"
+BACKEND_VERSION="${BACKEND_VERSION:-}"
+FRONTEND_VERSION="${FRONTEND_VERSION:-}"
+NODECLIENT_VERSION="${NODECLIENT_VERSION:-}"
+LICENSE_KEY="${LICENSE_KEY:-${NODEPASS_LICENSE_KEY:-}}"
+LICENSE_VERIFY_URL="${LICENSE_VERIFY_URL:-https://license.nodepass.pro/api/v1/license/verify}"
+LICENSE_MACHINE_ID="${LICENSE_MACHINE_ID:-}"
+LICENSE_ACTION="${LICENSE_ACTION:-install}"
+LICENSE_VERIFIED="${LICENSE_VERIFIED:-false}"
 
 log_info() {
   echo "[INFO] $*"
@@ -25,6 +34,55 @@ log_warn() {
 
 log_error() {
   echo "[ERROR] $*" >&2
+}
+
+read_version_file() {
+  local version_file="$1"
+  local default_value="$2"
+  if [[ -f "$version_file" ]]; then
+    local value
+    value="$(tr -d '[:space:]' <"$version_file")"
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return
+    fi
+  fi
+  echo "$default_value"
+}
+
+detect_machine_id() {
+  if [[ -n "$LICENSE_MACHINE_ID" ]]; then
+    echo "$LICENSE_MACHINE_ID"
+    return
+  fi
+  if [[ -f /etc/machine-id ]]; then
+    tr -d '[:space:]' </etc/machine-id
+    return
+  fi
+  if [[ -f /var/lib/dbus/machine-id ]]; then
+    tr -d '[:space:]' </var/lib/dbus/machine-id
+    return
+  fi
+  hostname
+}
+
+load_versions() {
+  if [[ -z "$PANEL_VERSION" ]]; then
+    PANEL_VERSION="$(read_version_file "${ROOT_DIR}/VERSION" "dev")"
+  fi
+  if [[ -z "$BACKEND_VERSION" ]]; then
+    BACKEND_VERSION="$(read_version_file "${ROOT_DIR}/backend/VERSION" "$PANEL_VERSION")"
+  fi
+  if [[ -z "$FRONTEND_VERSION" ]]; then
+    FRONTEND_VERSION="$(read_version_file "${ROOT_DIR}/frontend/VERSION" "$PANEL_VERSION")"
+  fi
+  if [[ -z "$NODECLIENT_VERSION" ]]; then
+    NODECLIENT_VERSION="$(read_version_file "${ROOT_DIR}/nodeclient/VERSION" "$PANEL_VERSION")"
+  fi
+}
+
+print_version_summary() {
+  log_info "当前版本: panel=${PANEL_VERSION}, backend=${BACKEND_VERSION}, frontend=${FRONTEND_VERSION}, nodeclient=${NODECLIENT_VERSION}"
 }
 
 usage() {
@@ -44,6 +102,9 @@ NodePass Pro 一键部署脚本
   --caddy-https-port <端口>       Caddy HTTPS 端口，默认 443
   --no-build                      启动时不执行镜像构建
   --skip-nodeclient-build         跳过 nodeclient 二进制自动构建
+  --license-key <授权码>          授权码（非 down 模式必填）
+  --license-server <URL>          授权验证接口（默认: https://license.nodepass.pro/api/v1/license/verify）
+  --machine-id <ID>               指定机器标识（可选，默认自动检测）
   --down                          停止并移除当前部署
   -h, --help                      显示帮助
 
@@ -52,11 +113,15 @@ NodePass Pro 一键部署脚本
                                   默认: ./backend/configs/config.docker.yaml
   FRONTEND_BIND                   前端绑定地址，默认: 127.0.0.1:5173
   AUTO_BUILD_NODECLIENT           是否自动构建 nodeclient 下载包（默认: true）
+  BACKEND_VERSION                 覆盖后端构建版本（默认读取 backend/VERSION）
+  FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
+  LICENSE_KEY                     授权码（可替代 --license-key）
+  LICENSE_VERIFY_URL              授权验证接口（可替代 --license-server）
 
 示例:
-  ./scripts/deploy.sh
-  ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --email admin@example.com
-  ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
+  ./scripts/deploy.sh --license-key NP-XXXX-XXXX
+  ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --email admin@example.com
+  ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
   ./scripts/deploy.sh --skip-nodeclient-build
   BACKEND_CONFIG_FILE=./backend/configs/config.runtime.yaml ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com
 EOF
@@ -182,6 +247,18 @@ parse_args() {
         AUTO_BUILD_NODECLIENT=false
         shift
         ;;
+      --license-key)
+        LICENSE_KEY="${2:-}"
+        shift 2
+        ;;
+      --license-server)
+        LICENSE_VERIFY_URL="${2:-}"
+        shift 2
+        ;;
+      --machine-id)
+        LICENSE_MACHINE_ID="${2:-}"
+        shift 2
+        ;;
       -h|--help)
         usage
         exit 0
@@ -195,9 +272,56 @@ parse_args() {
   done
 }
 
+verify_license_or_exit() {
+  if [[ "$LICENSE_VERIFIED" == "true" ]]; then
+    log_info "检测到上游已完成授权校验，跳过重复验证。"
+    return
+  fi
+
+  if [[ -z "$LICENSE_KEY" ]]; then
+    log_error "缺少授权码，请使用 --license-key 或环境变量 LICENSE_KEY/NODEPASS_LICENSE_KEY。"
+    exit 1
+  fi
+
+  local verify_script="${ROOT_DIR}/scripts/license-verify.py"
+  if [[ ! -f "$verify_script" ]]; then
+    log_error "未找到授权验证脚本: $verify_script"
+    exit 1
+  fi
+
+  require_command python3
+  local machine_id
+  machine_id="$(detect_machine_id)"
+
+  log_info "开始授权校验..."
+  local verify_output
+  if ! verify_output="$(python3 "$verify_script" \
+    --verify-url "$LICENSE_VERIFY_URL" \
+    --license-key "$LICENSE_KEY" \
+    --machine-id "$machine_id" \
+    --action "$LICENSE_ACTION" \
+    --panel-version "$PANEL_VERSION" \
+    --backend-version "$BACKEND_VERSION" \
+    --frontend-version "$FRONTEND_VERSION" \
+    --nodeclient-version "$NODECLIENT_VERSION" \
+    --timeout 20 2>&1)"; then
+    log_error "授权校验失败: $verify_output"
+    exit 1
+  fi
+
+  local license_id license_plan
+  license_id="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("license_id",""))' "$verify_output" 2>/dev/null || true)"
+  license_plan="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("plan",""))' "$verify_output" 2>/dev/null || true)"
+  log_info "授权校验通过。license_id=${license_id:-unknown}, plan=${license_plan:-unknown}"
+}
+
 run_compose() {
   BACKEND_CONFIG_FILE="${BACKEND_CONFIG_FILE:-./backend/configs/config.docker.yaml}" \
     FRONTEND_BIND="${FRONTEND_BIND:-127.0.0.1:5173}" \
+    BACKEND_VERSION="${BACKEND_VERSION}" \
+    FRONTEND_VERSION="${FRONTEND_VERSION}" \
+    PANEL_VERSION="${PANEL_VERSION}" \
+    NODECLIENT_VERSION="${NODECLIENT_VERSION}" \
     CADDY_HTTP_PORT="$CADDY_HTTP_PORT" \
     CADDY_HTTPS_PORT="$CADDY_HTTPS_PORT" \
     "$@"
@@ -220,6 +344,8 @@ build_nodeclient_downloads_if_needed() {
 
 main() {
   parse_args "$@"
+  load_versions
+  print_version_summary
   require_command docker
 
   if ! docker info >/dev/null 2>&1; then
@@ -256,6 +382,8 @@ main() {
     log_info "服务已停止。"
     exit 0
   fi
+
+  verify_license_or_exit
 
   local up_args=("-d")
   if [[ "$NO_BUILD" == false ]]; then

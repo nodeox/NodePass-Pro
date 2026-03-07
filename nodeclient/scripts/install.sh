@@ -14,6 +14,8 @@ HUB_URL=""
 TOKEN=""
 INSTALL_DIR="/opt/nodeclient"
 UNINSTALL="false"
+UPGRADE="false"
+SHOW_VERSION="false"
 OS_NAME=""
 ARCH_NAME=""
 
@@ -24,14 +26,22 @@ NodePass Client 一键安装/卸载脚本
 安装:
   install.sh --hub-url <url> --token <token> [--install-dir <dir>]
 
+升级:
+  install.sh --upgrade [--hub-url <url>] [--install-dir <dir>]
+
 卸载:
   install.sh --uninstall [--install-dir <dir>]
+
+查看版本:
+  install.sh --version [--install-dir <dir>]
 
 参数:
   --hub-url <url>      面板地址 (安装时必填)
   --token <token>      节点 Token (安装时必填)
   --install-dir <dir>  安装目录 (默认: /opt/nodeclient)
+  --upgrade            升级 nodeclient（二进制与服务）
   --uninstall          卸载 nodeclient
+  --version            查看已安装版本
   -h, --help           显示帮助
 EOF
 }
@@ -96,6 +106,30 @@ detect_platform() {
   esac
 }
 
+read_config_value() {
+  local key="$1"
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    return 1
+  fi
+  awk -F': ' -v key="$key" '
+    $1 == key {
+      value = $2
+      gsub(/^"/, "", value)
+      gsub(/"$/, "", value)
+      print value
+      exit
+    }
+  ' "${CONFIG_FILE}"
+}
+
+get_binary_version() {
+  if [[ -x "${INSTALL_DIR}/nodeclient" ]]; then
+    "${INSTALL_DIR}/nodeclient" --version 2>/dev/null || echo "unknown"
+    return
+  fi
+  echo "not-installed"
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -116,6 +150,14 @@ parse_args() {
         ;;
       --uninstall)
         UNINSTALL="true"
+        shift
+        ;;
+      --upgrade)
+        UPGRADE="true"
+        shift
+        ;;
+      --version)
+        SHOW_VERSION="true"
         shift
         ;;
       -h|--help)
@@ -220,6 +262,30 @@ do_install() {
   echo "安装完成! 节点将自动注册到面板。"
 }
 
+do_upgrade() {
+  detect_platform
+  require_cmd curl
+  require_cmd sha256sum
+  require_cmd install
+  require_cmd systemctl
+
+  local old_version new_version
+  old_version="$(get_binary_version)"
+
+  if [[ -z "${HUB_URL}" ]]; then
+    HUB_URL="$(read_config_value "hub_url" || true)"
+  fi
+  [[ -n "${HUB_URL}" ]] || fail "升级模式下需要 --hub-url，或已存在 ${CONFIG_FILE}"
+
+  download_and_install_binary
+  run_step "重载 systemd 配置" systemctl daemon-reload
+  run_step "重启服务" systemctl restart "${SERVICE_NAME}"
+
+  new_version="$(get_binary_version)"
+  log_info "升级完成: ${old_version} -> ${new_version}"
+  show_status
+}
+
 do_uninstall() {
   require_cmd systemctl
 
@@ -259,8 +325,18 @@ main() {
   parse_args "$@"
   check_root
 
+  if [[ "${SHOW_VERSION}" == "true" ]]; then
+    echo "nodeclient version: $(get_binary_version)"
+    exit 0
+  fi
+
   if [[ "${UNINSTALL}" == "true" ]]; then
     do_uninstall
+    exit 0
+  fi
+
+  if [[ "${UPGRADE}" == "true" ]]; then
+    do_upgrade
     exit 0
   fi
 

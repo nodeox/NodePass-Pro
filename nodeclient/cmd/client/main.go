@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"nodepass-pro/nodeclient/internal/agent"
@@ -10,11 +11,17 @@ import (
 
 func main() {
 	var (
-		configPath = flag.String("config", "configs/config.yaml", "配置文件路径")
-		hubURL     = flag.String("hub-url", "", "覆盖配置中的 hub_url")
-		token      = flag.String("token", "", "覆盖配置中的 node_token")
+		configPath  = flag.String("config", "configs/config.yaml", "配置文件路径")
+		hubURL      = flag.String("hub-url", "", "覆盖配置中的 hub_url")
+		token       = flag.String("token", "", "覆盖配置中的 node_token")
+		showVersion = flag.Bool("version", false, "显示客户端版本")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(agent.Version())
+		return
+	}
 
 	cfg, err := config.Load(*configPath, config.CLIOverrides{
 		HubURL: *hubURL,

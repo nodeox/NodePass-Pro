@@ -20,7 +20,12 @@ import (
 	"nodepass-pro/nodeclient/internal/traffic"
 )
 
-const clientVersion = "0.1.0"
+var clientVersion = "0.1.0"
+
+// Version 返回节点客户端版本号。
+func Version() string {
+	return clientVersion
+}
 
 // Agent 定义节点客户端核心控制器。
 type Agent struct {
