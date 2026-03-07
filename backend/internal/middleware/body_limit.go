@@ -2,8 +2,9 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,7 +40,7 @@ func RequestBodyLimit(maxSize int64) gin.HandlerFunc {
 func formatBytes(bytes int64) string {
 	const unit = 1024
 	if bytes < unit {
-		return string(bytes) + " B"
+		return strconv.FormatInt(bytes, 10) + " B"
 	}
 	div, exp := int64(unit), 0
 	for n := bytes / unit; n >= unit; n /= unit {
@@ -47,5 +48,5 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	units := []string{"KB", "MB", "GB", "TB"}
-	return string(bytes/div) + " " + units[exp]
+	return strconv.FormatInt(bytes/div, 10) + " " + units[exp]
 }

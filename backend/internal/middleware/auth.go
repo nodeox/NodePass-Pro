@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"

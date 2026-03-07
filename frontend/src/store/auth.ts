@@ -1,13 +1,14 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
 import {
-  AUTH_STORAGE_KEY,
   authApi,
   clearAuthStorage,
   setAuthToken,
 } from '../services/api'
 import type { LoginPayload, RegisterPayload, User } from '../types'
+
+const AUTH_STORE_PERSIST_KEY = 'nodepass-auth-zustand'
 
 interface AuthState {
   token: string | null
@@ -109,7 +110,9 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: AUTH_STORAGE_KEY,
+      name: AUTH_STORE_PERSIST_KEY,
+      // 使用 sessionStorage 代替 localStorage（更安全）
+      storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         token: state.token,
         user: state.user,

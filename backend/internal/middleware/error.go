@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/models"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/models"
+	"nodepass-pro/backend/internal/utils"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

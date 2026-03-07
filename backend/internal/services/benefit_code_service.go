@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/models"
+	"nodepass-pro/backend/internal/models"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

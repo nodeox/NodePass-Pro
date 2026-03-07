@@ -9,14 +9,17 @@ import BenefitCodeManage from './pages/benefit-codes/BenefitCodeManage'
 import RedeemCode from './pages/benefit-codes/RedeemCode'
 import Dashboard from './pages/dashboard/Dashboard'
 import UserDashboard from './pages/dashboard/UserDashboard'
-import NodeList from './pages/nodes/NodeList'
+import CreateNodeGroupPage from './pages/NodeGroups/CreateNodeGroup'
+import DeployNodePage from './pages/NodeGroups/DeployNode'
+import NodeGroupDetailPage from './pages/NodeGroups/NodeGroupDetail'
+import NodeGroupsPage from './pages/NodeGroups'
 import Profile from './pages/profile/Profile'
-import RuleForm from './pages/rules/RuleForm'
-import RuleList from './pages/rules/RuleList'
 import Announcements from './pages/system/Announcements'
 import AuditLogs from './pages/system/AuditLogs'
 import SystemConfig from './pages/system/SystemConfig'
 import UserManage from './pages/system/UserManage'
+import TunnelDetail from './pages/tunnels/TunnelDetail'
+import TunnelList from './pages/tunnels/TunnelList'
 import TrafficStats from './pages/traffic/TrafficStats'
 import VipCenter from './pages/vip/VipCenter'
 import VipLevelManage from './pages/vip/VipLevelManage'
@@ -77,6 +80,16 @@ const RoleHomeRedirect = () => {
   return <Navigate to={getHomePathByRole(user.role)} replace />
 }
 
+const AuthLayout = () => {
+  const user = useAuthStore((state) => state.user)
+
+  if (!user) {
+    return <FullScreenLoading />
+  }
+
+  return <MainLayout portal={user.role === 'admin' ? 'admin' : 'user'} />
+}
+
 const router = createBrowserRouter([
   {
     path: '/login',
@@ -95,6 +108,35 @@ const router = createBrowserRouter([
         element: <RoleHomeRedirect />,
       },
       {
+        element: <AuthLayout />,
+        children: [
+          {
+            path: 'node-groups',
+            element: <NodeGroupsPage />,
+          },
+          {
+            path: 'node-groups/create',
+            element: <CreateNodeGroupPage />,
+          },
+          {
+            path: 'node-groups/:id',
+            element: <NodeGroupDetailPage />,
+          },
+          {
+            path: 'node-groups/:id/edit',
+            element: <NodeGroupDetailPage />,
+          },
+          {
+            path: 'node-groups/:id/deploy',
+            element: <DeployNodePage />,
+          },
+          {
+            path: 'tunnels/:id',
+            element: <TunnelDetail />,
+          },
+        ],
+      },
+      {
         path: 'user',
         element: <Outlet />,
         children: [
@@ -110,20 +152,16 @@ const router = createBrowserRouter([
                 element: <UserDashboard />,
               },
               {
-                path: 'nodes',
-                element: <NodeList />,
+                path: 'node-groups',
+                element: <NodeGroupsPage />,
               },
               {
-                path: 'rules',
-                element: <RuleList />,
+                path: 'tunnels',
+                element: <TunnelList />,
               },
               {
-                path: 'rules/new',
-                element: <RuleForm />,
-              },
-              {
-                path: 'rules/:id/edit',
-                element: <RuleForm />,
+                path: 'tunnels/:id',
+                element: <TunnelDetail />,
               },
               {
                 path: 'traffic',
@@ -161,20 +199,16 @@ const router = createBrowserRouter([
                 element: <Dashboard />,
               },
               {
-                path: 'nodes',
-                element: <NodeList />,
+                path: 'node-groups',
+                element: <NodeGroupsPage />,
               },
               {
-                path: 'rules',
-                element: <RuleList />,
+                path: 'tunnels',
+                element: <TunnelList />,
               },
               {
-                path: 'rules/new',
-                element: <RuleForm />,
-              },
-              {
-                path: 'rules/:id/edit',
-                element: <RuleForm />,
+                path: 'tunnels/:id',
+                element: <TunnelDetail />,
               },
               {
                 path: 'traffic',

@@ -56,6 +56,7 @@ type TelegramConfig struct {
 	BotToken    string `mapstructure:"bot_token"`
 	BotUsername string `mapstructure:"bot_username"`
 	WebhookURL  string `mapstructure:"webhook_url"`
+	SecretToken string `mapstructure:"secret_token"`
 }
 
 // LicenseConfig 运行时授权配置。

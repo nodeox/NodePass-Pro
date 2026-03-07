@@ -119,89 +119,6 @@ export interface NodeRecord {
   updated_at: string
 }
 
-export interface NodeListQuery extends PaginationQuery {
-  status?: string
-  is_self_hosted?: boolean
-  is_public?: boolean
-  region?: string
-  user_id?: number
-}
-
-export interface CreateNodePayload {
-  name: string
-  host: string
-  port: number
-  region?: string
-  is_self_hosted: boolean
-  is_public?: boolean
-  traffic_multiplier?: number
-  description?: string
-  panel_url?: string
-  hub_url?: string
-}
-
-export interface UpdateNodePayload {
-  name?: string
-  status?: string
-  host?: string
-  port?: number
-  region?: string
-  is_self_hosted?: boolean
-  is_public?: boolean
-  traffic_multiplier?: number
-  description?: string
-}
-
-export interface CreateNodeResult {
-  node: NodeRecord
-  token: string
-  install_command: string
-}
-
-export interface NodeQuotaInfo {
-  user_id: number
-  vip_level: number
-  max_self_hosted_entry_nodes: number
-  max_self_hosted_exit_nodes: number
-  used_self_hosted_nodes: number
-  total_self_hosted_node_quota: number
-  remaining_self_hosted_quota: number
-}
-
-export interface NodePairRecord {
-  id: number
-  user_id: number
-  entry_node_id: number
-  exit_node_id: number
-  name?: string | null
-  is_enabled: boolean
-  description?: string | null
-  created_at: string
-  entry_node?: NodeRecord | null
-  exit_node?: NodeRecord | null
-}
-
-export interface NodePairListResult {
-  list: NodePairRecord[]
-  total: number
-}
-
-export interface CreateNodePairPayload {
-  entry_node_id: number
-  exit_node_id: number
-  name?: string
-  is_enabled?: boolean
-  description?: string
-}
-
-export interface UpdateNodePairPayload {
-  entry_node_id?: number
-  exit_node_id?: number
-  name?: string
-  is_enabled?: boolean
-  description?: string
-}
-
 export interface RuleRecord {
   id: number
   user_id: number
@@ -224,36 +141,6 @@ export interface RuleRecord {
   config_version?: number
   created_at: string
   updated_at: string
-}
-
-export interface RuleListQuery extends PaginationQuery {
-  status?: string
-  mode?: 'single' | 'tunnel'
-  user_id?: number
-}
-
-export interface CreateRulePayload {
-  name: string
-  mode: 'single' | 'tunnel'
-  protocol: 'tcp' | 'udp' | 'ws' | 'tls' | 'quic'
-  entry_node_id: number
-  exit_node_id?: number
-  target_host: string
-  target_port: number
-  listen_host?: string
-  listen_port: number
-}
-
-export interface UpdateRulePayload {
-  name?: string
-  mode?: 'single' | 'tunnel'
-  protocol?: 'tcp' | 'udp' | 'ws' | 'tls' | 'quic'
-  entry_node_id?: number
-  exit_node_id?: number
-  target_host?: string
-  target_port?: number
-  listen_host?: string
-  listen_port?: number
 }
 
 export interface TrafficQuota {
@@ -489,19 +376,6 @@ export interface Node {
   configVersion: number
   description: string
   lastHeartbeatAt: string | null
-  createdAt: string
-}
-
-export interface NodePair {
-  id: number
-  userId: number
-  entryNodeId: number
-  exitNodeId: number
-  entryNode: Node
-  exitNode: Node
-  name: string
-  isEnabled: boolean
-  description: string
   createdAt: string
 }
 

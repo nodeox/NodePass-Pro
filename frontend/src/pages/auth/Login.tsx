@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import BrandLogo from '../../components/common/BrandLogo'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { AUTH_STORAGE_KEY, setAuthToken, telegramApi } from '../../services/api'
+import { setAuthToken, telegramApi } from '../../services/api'
 import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
 import { getHomePathByRole } from '../../utils/route'
@@ -57,10 +57,6 @@ const Login = () => {
         account: values.email,
         password: values.password,
       })
-
-      if (!values.remember) {
-        localStorage.removeItem(AUTH_STORAGE_KEY)
-      }
 
       message.success('登录成功')
       const currentUser = useAuthStore.getState().user

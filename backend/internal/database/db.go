@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/models"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/models"
 
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
@@ -104,9 +104,13 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.UserPermission{},
+		&models.NodeGroup{},
+		&models.NodeInstance{},
+		&models.NodeGroupRelation{},
+		&models.NodeGroupStats{},
+		&models.Tunnel{},
 		&models.Node{},
 		&models.NodeConfig{},
-		&models.NodePair{},
 		&models.Rule{},
 		&models.TrafficRecord{},
 		&models.VIPLevel{},
@@ -116,31 +120,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.AuditLog{},
 	); err != nil {
 		return err
-	}
-
-	return migrateNodePairIndexes(db)
-}
-
-func migrateNodePairIndexes(db *gorm.DB) error {
-	migrator := db.Migrator()
-	nodePairModel := &models.NodePair{}
-
-	legacyIndexes := []string{
-		"uk_node_pairs_entry_exit",
-	}
-	for _, indexName := range legacyIndexes {
-		if migrator.HasIndex(nodePairModel, indexName) {
-			if err := migrator.DropIndex(nodePairModel, indexName); err != nil {
-				return fmt.Errorf("移除旧节点配对唯一索引失败(%s): %w", indexName, err)
-			}
-		}
-	}
-
-	const scopedUniqueIndex = "uk_node_pairs_user_entry_exit"
-	if !migrator.HasIndex(nodePairModel, scopedUniqueIndex) {
-		if err := migrator.CreateIndex(nodePairModel, scopedUniqueIndex); err != nil {
-			return fmt.Errorf("创建节点配对唯一索引失败(%s): %w", scopedUniqueIndex, err)
-		}
 	}
 
 	return nil

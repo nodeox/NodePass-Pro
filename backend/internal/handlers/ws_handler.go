@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"nodepass-panel/backend/internal/utils"
-	panelws "nodepass-panel/backend/internal/websocket"
+	"nodepass-pro/backend/internal/utils"
+	panelws "nodepass-pro/backend/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 )

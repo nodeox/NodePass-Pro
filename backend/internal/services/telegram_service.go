@@ -16,10 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/models"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -98,6 +99,11 @@ func (s *TelegramService) InitBot(botToken string) error {
 
 	form := url.Values{}
 	form.Set("url", webhookURL)
+	secretToken := resolveTelegramWebhookSecret(cfg, token)
+	if secretToken == "" {
+		return fmt.Errorf("%w: telegram.secret_token 生成失败", ErrInvalidParams)
+	}
+	form.Set("secret_token", secretToken)
 	if _, err := s.callTelegramAPI("setWebhook", form); err != nil {
 		return err
 	}
@@ -132,13 +138,23 @@ func (s *TelegramService) HandleCommand(update TelegramUpdate) error {
 		code := strings.ToUpper(strings.TrimSpace(parts[2]))
 		userID, err := s.verifyAndConsumeBindCode(email, code)
 		if err != nil {
-			if sendErr := s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "绑定失败："+err.Error()); sendErr != nil {
+			// 记录详细错误到日志
+			zap.L().Error("Telegram 绑定失败",
+				zap.Error(err),
+				zap.String("email", email),
+				zap.Int64("telegram_id", update.Message.From.ID))
+			// 返回通用错误消息
+			if sendErr := s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "绑定失败，请检查邮箱和验证码是否正确"); sendErr != nil {
 				return fmt.Errorf("发送绑定失败通知失败: %w", sendErr)
 			}
 			return nil
 		}
 		if err = s.BindAccount(strconv.FormatInt(update.Message.From.ID, 10), update.Message.From.Username, userID); err != nil {
-			if sendErr := s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "绑定失败："+err.Error()); sendErr != nil {
+			zap.L().Error("Telegram 账户绑定失败",
+				zap.Error(err),
+				zap.Uint("user_id", userID),
+				zap.Int64("telegram_id", update.Message.From.ID))
+			if sendErr := s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "绑定失败，请稍后重试"); sendErr != nil {
 				return fmt.Errorf("发送绑定失败通知失败: %w", sendErr)
 			}
 			return nil
@@ -164,7 +180,11 @@ func (s *TelegramService) HandleCommand(update TelegramUpdate) error {
 			return s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "当前 Telegram 未绑定任何账户。")
 		}
 		if err = s.UnbindAccount(user.ID); err != nil {
-			return s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "解绑失败："+err.Error())
+			zap.L().Error("Telegram 解绑失败",
+				zap.Error(err),
+				zap.Uint("user_id", user.ID),
+				zap.Int64("telegram_id", update.Message.From.ID))
+			return s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "解绑失败，请稍后重试")
 		}
 		return s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), "解绑成功。")
 	default:
@@ -524,7 +544,12 @@ func (s *TelegramService) callTelegramAPI(method string, form url.Values) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("调用 Telegram API 失败: %w", err)
 	}
-	defer resp.Body.Close()
+	// 安全地关闭响应体
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+	}()
 
 	var body map[string]any
 	if err = json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -555,6 +580,22 @@ func generateBindCode(length int) (string, error) {
 		builder.WriteByte(charset[int(b)%len(charset)])
 	}
 	return builder.String(), nil
+}
+
+func resolveTelegramWebhookSecret(cfg *config.Config, botToken string) string {
+	if cfg == nil {
+		return ""
+	}
+	secretToken := strings.TrimSpace(cfg.Telegram.SecretToken)
+	if secretToken != "" {
+		return secretToken
+	}
+
+	// 未显式配置时基于 bot token 派生稳定 secret，避免 webhook 裸露。
+	sum := sha256.Sum256([]byte("nodepass-webhook:" + strings.TrimSpace(botToken)))
+	secretToken = hex.EncodeToString(sum[:16])
+	cfg.Telegram.SecretToken = secretToken
+	return secretToken
 }
 
 func normalizeCommand(raw string) string {
@@ -603,14 +644,19 @@ func generateUserJWT(userID uint, role string) (string, error) {
 	}
 
 	expireHours := cfg.JWT.ExpireTime
-	if expireHours <= 0 {
-		expireHours = 24
+	// 限制最大过期时间为 1 小时，默认 15 分钟
+	expireMinutes := 15 // 默认 15 分钟
+	if expireHours > 0 {
+		expireMinutes = expireHours * 60
+		if expireMinutes > 60 {
+			expireMinutes = 60
+		}
 	}
 
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
-		"exp":     time.Now().Add(time.Duration(expireHours) * time.Hour).Unix(),
+		"exp":     time.Now().Add(time.Duration(expireMinutes) * time.Minute).Unix(),
 		"iat":     time.Now().Unix(),
 	}
 

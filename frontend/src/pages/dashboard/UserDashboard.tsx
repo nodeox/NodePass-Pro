@@ -18,9 +18,11 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { announcementApi, nodeApi, ruleApi, trafficApi } from '../../services/api'
+import { announcementApi, trafficApi } from '../../services/api'
+import { nodeGroupApi, tunnelApi } from '../../services/nodeGroupApi'
 import { useAuthStore } from '../../store/auth'
-import type { AnnouncementRecord, NodeRecord } from '../../types'
+import type { AnnouncementRecord } from '../../types'
+import type { NodeGroup, NodeInstance } from '../../types/nodeGroup'
 import { formatBytes, formatDateTime } from '../../utils/format'
 
 type RangeType = '7d' | '30d'
@@ -34,8 +36,8 @@ type TrafficTrendPoint = {
 type UserDashboardStats = {
   totalNodes: number
   onlineNodes: number
-  runningRules: number
-  totalRules: number
+  runningTunnels: number
+  totalTunnels: number
   monthlyTrafficUsed: number
   monthlyTrafficQuota: number
   vipLevel: number
@@ -50,7 +52,10 @@ type NodeStatusOverview = {
 
 const getRangeDays = (range: RangeType): number => (range === '7d' ? 7 : 30)
 
-const normalizeNodeStatus = (nodes: NodeRecord[]): NodeStatusOverview => {
+const collectNodeInstances = (groups: NodeGroup[]): NodeInstance[] =>
+  groups.flatMap((group) => group.node_instances ?? [])
+
+const normalizeNodeStatus = (nodes: NodeInstance[]): NodeStatusOverview => {
   return nodes.reduce<NodeStatusOverview>(
     (summary, node) => {
       if (node.status === 'online') {
@@ -85,8 +90,8 @@ const UserDashboard = () => {
   const [stats, setStats] = useState<UserDashboardStats>({
     totalNodes: 0,
     onlineNodes: 0,
-    runningRules: 0,
-    totalRules: 0,
+    runningTunnels: 0,
+    totalTunnels: 0,
     monthlyTrafficUsed: 0,
     monthlyTrafficQuota: 0,
     vipLevel: 0,
@@ -130,10 +135,10 @@ const UserDashboard = () => {
     const loadDashboard = async (): Promise<void> => {
       setLoading(true)
       try {
-        const [nodeResult, ruleResult, quotaResult, announcementResult, trendResult] =
+        const [groupResult, tunnelResult, quotaResult, announcementResult, trendResult] =
           await Promise.all([
-            nodeApi.list({ page: 1, pageSize: 500 }),
-            ruleApi.list({ page: 1, pageSize: 500 }),
+            nodeGroupApi.list({ page: 1, page_size: 500 }),
+            tunnelApi.list({ page: 1, page_size: 500 }),
             trafficApi.quota(),
             announcementApi.list(true),
             loadTrafficTrend(range),
@@ -143,16 +148,17 @@ const UserDashboard = () => {
           return
         }
 
-        const nodes = nodeResult.list ?? []
-        const rules = ruleResult.list ?? []
-        const runningRules = rules.filter((rule) => rule.status === 'running').length
+        const groups = groupResult.items ?? []
+        const nodes = collectNodeInstances(groups)
+        const tunnels = tunnelResult.items ?? []
+        const runningTunnels = tunnels.filter((item) => item.status === 'running').length
         const nodeSummary = normalizeNodeStatus(nodes)
 
         setStats({
           totalNodes: nodes.length,
           onlineNodes: nodeSummary.online,
-          runningRules,
-          totalRules: rules.length,
+          runningTunnels,
+          totalTunnels: tunnels.length,
           monthlyTrafficUsed:
             quotaResult.traffic_used ?? quotaResult.trafficUsed ?? 0,
           monthlyTrafficQuota:
@@ -263,8 +269,8 @@ const UserDashboard = () => {
             renderSkeletonCard()
           ) : (
             <Card className="h-full">
-              <Statistic title="运行中规则" value={stats.runningRules} />
-              <Typography.Text type="secondary">总计 {stats.totalRules}</Typography.Text>
+              <Statistic title="运行中隧道" value={stats.runningTunnels} />
+              <Typography.Text type="secondary">总计 {stats.totalTunnels}</Typography.Text>
             </Card>
           )}
         </Col>

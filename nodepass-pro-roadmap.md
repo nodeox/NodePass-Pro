@@ -722,7 +722,7 @@ GET    /api/v1/system/stats
 # 后端
 git clone https://github.com/nodeox/NodePass-Pro.git
 cd NodePass-Pro/backend
-go mod init nodepass-panel/backend
+go mod init nodepass-pro/backend
 go mod tidy
 air  # 热重载开发
 

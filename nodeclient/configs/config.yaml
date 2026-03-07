@@ -1,5 +1,12 @@
 hub_url: "https://your-panel.com"
 node_token: "node_abc123xyz"
+service_name: "nodeclient"
+node_id: "00000000-0000-4000-a000-000000000000"
+group_id: 1
+node_role: "both"
+connect_host: ""
+debug: false
+egress_interface: ""
 cache_path: "/var/lib/nodeclient/config.json"
 log_path: "/var/log/nodeclient/"
 heartbeat_interval: 30

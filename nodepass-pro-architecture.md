@@ -1195,7 +1195,7 @@ func (a *Agent) sendHeartbeat() {
 ```bash
 git clone https://github.com/nodeox/NodePass-Pro.git
 cd NodePass-Pro/backend
-go mod init nodepass-panel/backend
+go mod init nodepass-pro/backend
 go mod tidy
 go run cmd/server/main.go
 ```

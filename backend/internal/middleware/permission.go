@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"nodepass-panel/backend/internal/database"
-	"nodepass-panel/backend/internal/models"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/database"
+	"nodepass-pro/backend/internal/models"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )

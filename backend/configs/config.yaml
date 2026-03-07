@@ -1,9 +1,19 @@
 server:
   port: "8080"
   mode: "debug" # debug / release
+  # WebSocket 允许的来源列表（用于 CORS 验证）
+  # 支持以下格式：
+  # - 完整 URL: "https://panel.example.com"
+  # - 主机名: "panel.example.com"
+  # - 通配符: "*.example.com" (匹配所有子域名)
+  # 开发模式下自动允许 localhost 和 127.0.0.1
+  # 生产模式下必须明确配置允许的来源
   allowed_origins:
     - "localhost"
     - "127.0.0.1"
+    # 生产环境示例（取消注释并修改）：
+    # - "https://panel.example.com"
+    # - "*.example.com"
 
 database:
   type: "postgres" # sqlite / mysql / postgres

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/cache"
-	"nodepass-panel/backend/internal/models"
+	"nodepass-pro/backend/internal/cache"
+	"nodepass-pro/backend/internal/models"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"

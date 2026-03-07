@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -115,21 +116,50 @@ func inferPanelURL(c *gin.Context) string {
 }
 
 func writeServiceError(c *gin.Context, err error, defaultCode string) {
+	// 记录详细错误到日志（包含完整错误信息）
+	zap.L().Error("服务错误",
+		zap.Error(err),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("method", c.Request.Method),
+		zap.String("ip", c.ClientIP()))
+
+	// 根据环境决定是否返回详细错误
+	cfg := config.GlobalConfig
+	isProduction := cfg != nil && cfg.Server.Mode == "release"
+
+	// 返回给客户端的错误消息（生产环境脱敏）
+	var clientMessage string
+
 	switch {
 	case errors.Is(err, services.ErrUnauthorized):
-		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
+		clientMessage = "认证失败，请重新登录"
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", clientMessage)
 	case errors.Is(err, services.ErrInvalidParams):
-		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		if isProduction {
+			clientMessage = "请求参数错误"
+		} else {
+			clientMessage = err.Error() // 开发环境返回详细信息
+		}
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", clientMessage)
 	case errors.Is(err, services.ErrForbidden):
-		utils.Error(c, http.StatusForbidden, "FORBIDDEN", err.Error())
+		clientMessage = "无权限执行此操作"
+		utils.Error(c, http.StatusForbidden, "FORBIDDEN", clientMessage)
 	case errors.Is(err, services.ErrNotFound):
-		utils.Error(c, http.StatusNotFound, "NOT_FOUND", err.Error())
+		clientMessage = "请求的资源不存在"
+		utils.Error(c, http.StatusNotFound, "NOT_FOUND", clientMessage)
 	case errors.Is(err, services.ErrConflict):
-		utils.Error(c, http.StatusConflict, "CONFLICT", err.Error())
+		if isProduction {
+			clientMessage = "操作冲突，请稍后重试"
+		} else {
+			clientMessage = err.Error()
+		}
+		utils.Error(c, http.StatusConflict, "CONFLICT", clientMessage)
 	case errors.Is(err, services.ErrQuotaExceeded):
-		utils.Error(c, http.StatusBadRequest, "QUOTA_EXCEEDED", err.Error())
+		clientMessage = "配额已用尽"
+		utils.Error(c, http.StatusBadRequest, "QUOTA_EXCEEDED", clientMessage)
 	default:
-		zap.L().Error("处理请求失败", zap.Error(err))
-		utils.Error(c, http.StatusInternalServerError, defaultCode, "服务器内部错误")
+		// 默认错误：生产环境返回通用消息
+		clientMessage = "服务暂时不可用，请稍后重试"
+		utils.Error(c, http.StatusInternalServerError, defaultCode, clientMessage)
 	}
 }

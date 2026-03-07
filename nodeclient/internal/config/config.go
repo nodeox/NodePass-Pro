@@ -9,38 +9,72 @@ import (
 
 // Config 定义 nodeclient 运行所需配置。
 type Config struct {
-	HubURL                string `mapstructure:"hub_url"`
-	NodeToken             string `mapstructure:"node_token"`
-	CachePath             string `mapstructure:"cache_path"`
-	LogPath               string `mapstructure:"log_path"`
-	HeartbeatInterval     int    `mapstructure:"heartbeat_interval"`
-	ConfigCheckInterval   int    `mapstructure:"config_check_interval"`
-	TrafficReportInterval int    `mapstructure:"traffic_report_interval"`
+	// 节点组配置
+	GroupID     uint   `json:"group_id" yaml:"group_id" mapstructure:"group_id"`
+	NodeID      string `json:"node_id" yaml:"node_id" mapstructure:"node_id"`
+	ServiceName string `json:"service_name" yaml:"service_name" mapstructure:"service_name"`
+
+	// 网络配置
+	ConnectionAddress string `json:"connection_address" yaml:"connection_address" mapstructure:"connection_address"`
+	ExitNetwork       string `json:"exit_network" yaml:"exit_network" mapstructure:"exit_network"`
+
+	// 运行配置
+	DebugMode bool `json:"debug_mode" yaml:"debug_mode" mapstructure:"debug_mode"`
+	AutoStart bool `json:"auto_start" yaml:"auto_start" mapstructure:"auto_start"`
+
+	// 面板连接
+	HubURL string `json:"hub_url" yaml:"hub_url" mapstructure:"hub_url"`
+
+	// 缓存路径
+	CachePath string `json:"cache_path" yaml:"cache_path" mapstructure:"cache_path"`
+
+	// 兼容旧字段（保留，避免现有逻辑中断）
+	NodeToken             string `json:"node_token,omitempty" yaml:"node_token,omitempty" mapstructure:"node_token"`
+	NodeRole              string `json:"node_role,omitempty" yaml:"node_role,omitempty" mapstructure:"node_role"`
+	ConnectHost           string `json:"connect_host,omitempty" yaml:"connect_host,omitempty" mapstructure:"connect_host"`
+	Debug                 bool   `json:"debug,omitempty" yaml:"debug,omitempty" mapstructure:"debug"`
+	EgressInterface       string `json:"egress_interface,omitempty" yaml:"egress_interface,omitempty" mapstructure:"egress_interface"`
+	LogPath               string `json:"log_path,omitempty" yaml:"log_path,omitempty" mapstructure:"log_path"`
+	HeartbeatInterval     int    `json:"heartbeat_interval,omitempty" yaml:"heartbeat_interval,omitempty" mapstructure:"heartbeat_interval"`
+	ConfigCheckInterval   int    `json:"config_check_interval,omitempty" yaml:"config_check_interval,omitempty" mapstructure:"config_check_interval"`
+	TrafficReportInterval int    `json:"traffic_report_interval,omitempty" yaml:"traffic_report_interval,omitempty" mapstructure:"traffic_report_interval"`
 }
 
 // CLIOverrides 定义命令行覆盖配置项。
 type CLIOverrides struct {
-	HubURL string
-	Token  string
+	HubURL      string
+	NodeID      string
+	GroupID     uint
+	ServiceName string
+	Token       string
 }
 
 // Load 使用 Viper 加载配置文件并应用命令行覆盖参数。
 func Load(configPath string, overrides CLIOverrides) (*Config, error) {
 	path := strings.TrimSpace(configPath)
 	if path == "" {
-		path = "configs/config.yaml"
+		path = "/etc/nodeclient/config.yaml"
 	}
 
 	v := viper.New()
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
 
+	// 默认值（优先级：CLI > 配置文件 > 默认值）
+	v.SetDefault("cache_path", "/var/lib/nodeclient/config_cache.json")
+	v.SetDefault("auto_start", true)
+	v.SetDefault("debug_mode", false)
+	v.SetDefault("connection_address", "auto")
+	v.SetDefault("service_name", "nodeclient")
 	v.SetDefault("heartbeat_interval", 30)
 	v.SetDefault("config_check_interval", 60)
 	v.SetDefault("traffic_report_interval", 60)
 
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		// 配置文件不存在时，仅使用默认值 + CLI 覆盖。
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		}
 	}
 
 	cfg := &Config{}
@@ -51,8 +85,35 @@ func Load(configPath string, overrides CLIOverrides) (*Config, error) {
 	if hubURL := strings.TrimSpace(overrides.HubURL); hubURL != "" {
 		cfg.HubURL = hubURL
 	}
+	if nodeID := strings.TrimSpace(overrides.NodeID); nodeID != "" {
+		cfg.NodeID = nodeID
+	}
+	if overrides.GroupID > 0 {
+		cfg.GroupID = overrides.GroupID
+	}
+	if serviceName := strings.TrimSpace(overrides.ServiceName); serviceName != "" {
+		cfg.ServiceName = serviceName
+	}
 	if token := strings.TrimSpace(overrides.Token); token != "" {
 		cfg.NodeToken = token
+	}
+
+	// 新旧字段对齐，尽量兼容已有逻辑
+	if strings.TrimSpace(cfg.ConnectHost) == "" {
+		cfg.ConnectHost = strings.TrimSpace(cfg.ConnectionAddress)
+	}
+	if strings.TrimSpace(cfg.ConnectionAddress) == "" {
+		cfg.ConnectionAddress = strings.TrimSpace(cfg.ConnectHost)
+	}
+	if cfg.DebugMode {
+		cfg.Debug = true
+	}
+	if cfg.Debug {
+		cfg.DebugMode = true
+	}
+
+	if strings.TrimSpace(cfg.CachePath) == "" {
+		cfg.CachePath = "/var/lib/nodeclient/config_cache.json"
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -70,11 +131,18 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.HubURL) == "" {
 		return fmt.Errorf("hub_url 不能为空")
 	}
+	if strings.TrimSpace(c.NodeID) == "" {
+		return fmt.Errorf("node_id 不能为空")
+	}
+	// group_id 为 0 时给出警告，但不阻止启动（兼容旧配置）
+	if c.GroupID == 0 {
+		fmt.Println("警告: group_id 未配置或为 0，节点可能无法正常工作。请在配置文件中设置 group_id")
+	}
+	if strings.TrimSpace(c.ServiceName) == "" {
+		return fmt.Errorf("service_name 不能为空")
+	}
 	if strings.TrimSpace(c.NodeToken) == "" {
 		return fmt.Errorf("node_token 不能为空")
-	}
-	if strings.TrimSpace(c.CachePath) == "" {
-		return fmt.Errorf("cache_path 不能为空")
 	}
 	if c.HeartbeatInterval <= 0 {
 		return fmt.Errorf("heartbeat_interval 必须大于 0")

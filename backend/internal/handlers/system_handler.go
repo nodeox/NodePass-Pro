@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
-	panelws "nodepass-panel/backend/internal/websocket"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
+	panelws "nodepass-pro/backend/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

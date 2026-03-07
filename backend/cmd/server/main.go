@@ -11,17 +11,17 @@ import (
 	"syscall"
 	"time"
 
-	"nodepass-panel/backend/internal/cache"
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/database"
-	"nodepass-panel/backend/internal/handlers"
-	"nodepass-panel/backend/internal/license"
-	"nodepass-panel/backend/internal/middleware"
-	"nodepass-panel/backend/internal/models"
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
-	"nodepass-panel/backend/internal/version"
-	panelws "nodepass-panel/backend/internal/websocket"
+	"nodepass-pro/backend/internal/cache"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/database"
+	"nodepass-pro/backend/internal/handlers"
+	"nodepass-pro/backend/internal/license"
+	"nodepass-pro/backend/internal/middleware"
+	"nodepass-pro/backend/internal/models"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
+	"nodepass-pro/backend/internal/version"
+	panelws "nodepass-pro/backend/internal/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
@@ -82,8 +82,8 @@ func main() {
 		}
 	}()
 
-	router, wsHub := setupRouter(licenseManager)
-	taskScheduler, err := startCronTasks(wsHub)
+	router, _ := setupRouter(licenseManager)
+	taskScheduler, err := startCronTasks()
 	if err != nil {
 		zap.L().Fatal("定时任务注册失败", zap.Error(err))
 	}
@@ -151,7 +151,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.ErrorHandler())
-	r.Use(middleware.RequestBodyLimit(10 * 1024 * 1024)) // 10MB 限制
+	r.Use(middleware.RequestBodyLimit(1 * 1024 * 1024)) // 全局默认 1MB 限制
 	r.Use(middleware.RateLimit(50, 100))
 
 	r.GET("/health", func(c *gin.Context) {
@@ -189,15 +189,15 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		utils.Success(c, licenseManager.Status())
 	})
 
-	nodeHandler := handlers.NewNodeHandler(database.DB)
-	nodePairHandler := handlers.NewNodePairHandler(database.DB)
-	ruleHandler := handlers.NewRuleHandler(database.DB)
-	nodeAgentHandler := handlers.NewNodeAgentHandler(database.DB)
+	nodeGroupHandler := handlers.NewNodeGroupHandler(database.DB)
+	nodeInstanceHandler := handlers.NewNodeInstanceHandler(database.DB)
+	tunnelHandler := handlers.NewTunnelHandler(database.DB)
 	trafficHandler := handlers.NewTrafficHandler(database.DB)
 	vipHandler := handlers.NewVIPHandler(database.DB)
 	benefitCodeHandler := handlers.NewBenefitCodeHandler(database.DB)
 	telegramHandler := handlers.NewTelegramHandler(database.DB)
 	authHandler := handlers.NewAuthHandler(database.DB)
+	userAdminHandler := handlers.NewUserAdminHandler(database.DB)
 
 	wsHub := panelws.NewHub()
 	wsHandler := handlers.NewWebSocketHandler(wsHub)
@@ -218,16 +218,19 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", middleware.RateLimit(0.2, 5), authHandler.Login)
-	api.POST("/telegram/webhook", telegramHandler.Webhook)
+
+	// Telegram webhook - 严格的请求体限制（64KB）和签名验证
+	api.POST("/telegram/webhook",
+		middleware.RequestBodyLimit(64*1024), // 64KB
+		middleware.TelegramWebhookAuth(),     // 签名验证
+		telegramHandler.Webhook)
 	api.POST("/telegram/login", middleware.RateLimit(0.5, 5), telegramHandler.Login)
 
-	agentNodes := api.Group("/nodes")
-	{
-		agentNodes.POST("/register", nodeAgentHandler.Register)
-		agentNodes.POST("/heartbeat", nodeAgentHandler.Heartbeat)
-		agentNodes.GET("/:id/config", nodeAgentHandler.PullConfig)
-		agentNodes.POST("/traffic/report", trafficHandler.ReportTraffic)
-	}
+	// 节点心跳接口 - 添加严格的速率限制和防重放保护
+	api.POST("/node-instances/heartbeat",
+		middleware.RateLimit(1, 5),           // 每秒最多 1 次，突发 5 次
+		middleware.HeartbeatReplayProtection(), // 防重放攻击
+		nodeInstanceHandler.Heartbeat)
 
 	authGroup := api.Group("")
 	authGroup.Use(middleware.AuthMiddleware())
@@ -240,35 +243,45 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			auth.PUT("/password", authHandler.ChangePassword)
 		}
 
-		nodes := authGroup.Group("/nodes")
+		nodeGroups := authGroup.Group("/node-groups")
 		{
-			nodes.POST("", nodeHandler.CreateNode)
-			nodes.GET("", nodeHandler.ListNodes)
-			nodes.GET("/quota", nodeHandler.GetQuota)
-			nodes.GET("/:id", nodeHandler.GetNode)
-			nodes.PUT("/:id", nodeHandler.UpdateNode)
-			nodes.DELETE("/:id", nodeHandler.DeleteNode)
+			nodeGroups.POST("", nodeGroupHandler.Create)
+			nodeGroups.GET("", nodeGroupHandler.List)
+			nodeGroups.GET("/:id", nodeGroupHandler.Get)
+			nodeGroups.PUT("/:id", nodeGroupHandler.Update)
+			nodeGroups.DELETE("/:id", nodeGroupHandler.Delete)
+			nodeGroups.POST("/:id/toggle", nodeGroupHandler.Toggle)
+			nodeGroups.GET("/:id/stats", nodeGroupHandler.GetStats)
+			nodeGroups.POST("/:id/generate-deploy-command", nodeGroupHandler.GenerateDeployCommand)
+			nodeGroups.POST("/:id/relations", nodeGroupHandler.CreateRelation)
+			nodeGroups.GET("/:id/relations", nodeGroupHandler.ListRelations)
+			nodeGroups.GET("/:id/nodes", nodeGroupHandler.ListNodes)
+			nodeGroups.POST("/:id/nodes", nodeGroupHandler.AddNode)
 		}
 
-		pairs := authGroup.Group("/node-pairs")
+		nodeGroupRelations := authGroup.Group("/node-group-relations")
 		{
-			pairs.POST("", nodePairHandler.CreatePair)
-			pairs.GET("", nodePairHandler.ListPairs)
-			pairs.PUT("/:id", nodePairHandler.UpdatePair)
-			pairs.DELETE("/:id", nodePairHandler.DeletePair)
-			pairs.PUT("/:id/toggle", nodePairHandler.TogglePair)
+			nodeGroupRelations.DELETE("/:id", nodeGroupHandler.DeleteRelation)
+			nodeGroupRelations.POST("/:id/toggle", nodeGroupHandler.ToggleRelation)
 		}
 
-		rules := authGroup.Group("/rules")
+		nodeInstances := authGroup.Group("/node-instances")
 		{
-			rules.POST("", ruleHandler.CreateRule)
-			rules.GET("", ruleHandler.ListRules)
-			rules.GET("/:id", ruleHandler.GetRule)
-			rules.PUT("/:id", ruleHandler.UpdateRule)
-			rules.DELETE("/:id", ruleHandler.DeleteRule)
-			rules.POST("/:id/start", ruleHandler.StartRule)
-			rules.POST("/:id/stop", ruleHandler.StopRule)
-			rules.POST("/:id/restart", ruleHandler.RestartRule)
+			nodeInstances.GET("/:id", nodeInstanceHandler.Get)
+			nodeInstances.PUT("/:id", nodeInstanceHandler.Update)
+			nodeInstances.DELETE("/:id", nodeInstanceHandler.Delete)
+			nodeInstances.POST("/:id/restart", nodeInstanceHandler.Restart)
+		}
+
+		tunnels := authGroup.Group("/tunnels")
+		{
+			tunnels.POST("", tunnelHandler.Create)
+			tunnels.GET("", tunnelHandler.List)
+			tunnels.GET("/:id", tunnelHandler.Get)
+			tunnels.PUT("/:id", tunnelHandler.Update)
+			tunnels.DELETE("/:id", tunnelHandler.Delete)
+			tunnels.POST("/:id/start", tunnelHandler.Start)
+			tunnels.POST("/:id/stop", tunnelHandler.Stop)
 		}
 
 		traffic := authGroup.Group("/traffic")
@@ -303,6 +316,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 
 	adminGroup := authGroup.Group("")
 	adminGroup.Use(middleware.RequireRole("admin"))
+	adminGroup.Use(middleware.RateLimit(10, 20)) // 管理端点限流：10 QPS，20 突发
 	{
 		system := adminGroup.Group("/system")
 		{
@@ -324,6 +338,9 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 
 		adminUsers := adminGroup.Group("/users")
 		{
+			adminUsers.GET("", userAdminHandler.ListUsers)
+			adminUsers.PUT("/:id/role", userAdminHandler.UpdateRole)
+			adminUsers.PUT("/:id/status", userAdminHandler.UpdateStatus)
 			adminUsers.POST("/:id/vip/upgrade", vipHandler.UpgradeUser)
 		}
 
@@ -353,7 +370,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	return r, wsHub
 }
 
-func startCronTasks(wsHub *panelws.Hub) (*cron.Cron, error) {
+func startCronTasks() (*cron.Cron, error) {
 	if database.DB == nil {
 		return nil, fmt.Errorf("数据库未初始化")
 	}
@@ -365,6 +382,7 @@ func startCronTasks(wsHub *panelws.Hub) (*cron.Cron, error) {
 
 	trafficService := services.NewTrafficService(database.DB)
 	vipService := services.NewVIPService(database.DB)
+	nodeGroupService := services.NewNodeGroupService(database.DB)
 
 	addTask := func(spec string, taskName string, job func() error) error {
 		_, err := taskScheduler.AddFunc(spec, func() {
@@ -419,12 +437,12 @@ func startCronTasks(wsHub *panelws.Hub) (*cron.Cron, error) {
 		return nil, err
 	}
 
-	if err := addTask("*/30 * * * * *", "nodes.heartbeat_timeout_check", func() error {
-		offlineCount, runErr := checkNodeHeartbeatTimeout(wsHub)
+	if err := addTask("*/30 * * * * *", "node_instances.heartbeat_timeout_check", func() error {
+		offlineCount, runErr := nodeGroupService.MarkOfflineByHeartbeat(3 * time.Minute)
 		if runErr != nil {
 			return runErr
 		}
-		zap.L().Info("节点心跳超时检查完成", zap.Int("offline_nodes", offlineCount))
+		zap.L().Info("节点实例心跳超时检查完成", zap.Int64("offline_instances", offlineCount))
 		return nil
 	}); err != nil {
 		return nil, err
@@ -452,51 +470,6 @@ func startCronTasks(wsHub *panelws.Hub) (*cron.Cron, error) {
 	taskScheduler.Start()
 	zap.L().Info("定时任务调度器已启动")
 	return taskScheduler, nil
-}
-
-func checkNodeHeartbeatTimeout(wsHub *panelws.Hub) (int, error) {
-	cutoff := time.Now().Add(-3 * time.Minute)
-
-	nodes := make([]models.Node, 0)
-	if err := database.DB.Model(&models.Node{}).
-		Where("status <> ? AND last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?", "offline", cutoff).
-		Find(&nodes).Error; err != nil {
-		return 0, fmt.Errorf("查询心跳超时节点失败: %w", err)
-	}
-	if len(nodes) == 0 {
-		return 0, nil
-	}
-
-	ids := make([]uint, 0, len(nodes))
-	for _, node := range nodes {
-		ids = append(ids, node.ID)
-	}
-
-	if err := database.DB.Model(&models.Node{}).
-		Where("id IN ?", ids).
-		Update("status", "offline").Error; err != nil {
-		return 0, fmt.Errorf("更新离线节点状态失败: %w", err)
-	}
-
-	if wsHub != nil {
-		for _, node := range nodes {
-			payload := map[string]interface{}{
-				"node_id":           node.ID,
-				"user_id":           node.UserID,
-				"status":            "offline",
-				"reason":            "heartbeat_timeout",
-				"last_heartbeat_at": node.LastHeartbeatAt,
-			}
-			if err := wsHub.Broadcast(panelws.MessageTypeNodeStatusChanged, payload); err != nil {
-				zap.L().Warn("推送节点离线事件失败",
-					zap.Uint("node_id", node.ID),
-					zap.Error(err),
-				)
-			}
-		}
-	}
-
-	return len(nodes), nil
 }
 
 func cleanupExpiredAuditLogs() (int64, error) {

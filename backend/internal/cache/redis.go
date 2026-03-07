@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"nodepass-panel/backend/internal/config"
+	"nodepass-pro/backend/internal/config"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"

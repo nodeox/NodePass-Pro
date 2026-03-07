@@ -25,8 +25,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { nodeApi, ruleApi, trafficApi } from '../../services/api'
-import type { NodeRecord, RuleRecord, TrafficQuota, TrafficRecordItem } from '../../types'
+import { trafficApi } from '../../services/api'
+import { nodeGroupApi, tunnelApi } from '../../services/nodeGroupApi'
+import type { TrafficQuota, TrafficRecordItem } from '../../types'
+import type { NodeInstance, Tunnel } from '../../types/nodeGroup'
 import { getErrorMessage } from '../../utils/error'
 import { formatDateTime, formatTraffic } from '../../utils/format'
 
@@ -132,8 +134,8 @@ const TrafficStats = () => {
   const [exportLoading, setExportLoading] = useState<boolean>(false)
 
   const [quota, setQuota] = useState<TrafficQuota | null>(null)
-  const [rules, setRules] = useState<RuleRecord[]>([])
-  const [nodes, setNodes] = useState<NodeRecord[]>([])
+  const [tunnels, setTunnels] = useState<Tunnel[]>([])
+  const [nodes, setNodes] = useState<NodeInstance[]>([])
 
   const [trendRangeType, setTrendRangeType] = useState<TrendRangeType>('7d')
   const [trendCustomRange, setTrendCustomRange] = useState<[Dayjs, Dayjs] | null>(
@@ -159,14 +161,14 @@ const TrafficStats = () => {
   const [tableTotal, setTableTotal] = useState<number>(0)
   const [tableRecords, setTableRecords] = useState<TrafficRecordItem[]>([])
 
-  const loadAllRules = useCallback(async (): Promise<RuleRecord[]> => {
-    const merged: RuleRecord[] = []
+  const loadAllTunnels = useCallback(async (): Promise<Tunnel[]> => {
+    const merged: Tunnel[] = []
     let page = 1
     const pageSize = 200
 
     while (page <= 20) {
-      const result = await ruleApi.list({ page, pageSize })
-      merged.push(...(result.list ?? []))
+      const result = await tunnelApi.list({ page, page_size: pageSize })
+      merged.push(...(result.items ?? []))
       if (merged.length >= (result.total ?? 0)) {
         break
       }
@@ -176,15 +178,18 @@ const TrafficStats = () => {
     return merged
   }, [])
 
-  const loadAllNodes = useCallback(async (): Promise<NodeRecord[]> => {
-    const merged: NodeRecord[] = []
+  const loadAllNodes = useCallback(async (): Promise<NodeInstance[]> => {
+    const merged: NodeInstance[] = []
     let page = 1
     const pageSize = 200
 
     while (page <= 20) {
-      const result = await nodeApi.list({ page, pageSize })
-      merged.push(...(result.list ?? []))
-      if (merged.length >= (result.total ?? 0)) {
+      const result = await nodeGroupApi.list({ page, page_size: pageSize })
+      const list = result.items ?? []
+      list.forEach((group) => {
+        merged.push(...(group.node_instances ?? []))
+      })
+      if (list.length < pageSize) {
         break
       }
       page += 1
@@ -225,20 +230,20 @@ const TrafficStats = () => {
   const loadBaseData = useCallback(async (): Promise<void> => {
     setBootLoading(true)
     try {
-      const [quotaResult, allRules, allNodes] = await Promise.all([
+      const [quotaResult, allTunnels, allNodes] = await Promise.all([
         trafficApi.quota(),
-        loadAllRules(),
+        loadAllTunnels(),
         loadAllNodes(),
       ])
       setQuota(quotaResult)
-      setRules(allRules)
+      setTunnels(allTunnels)
       setNodes(allNodes)
     } catch (error) {
       message.error(getErrorMessage(error, '流量统计基础数据加载失败'))
     } finally {
       setBootLoading(false)
     }
-  }, [loadAllNodes, loadAllRules])
+  }, [loadAllNodes, loadAllTunnels])
 
   useEffect(() => {
     void loadBaseData()
@@ -399,18 +404,18 @@ const TrafficStats = () => {
 
   const ruleOptions = useMemo(
     () =>
-      rules.map((rule) => ({
-        value: rule.id,
-        label: `${rule.name} (#${rule.id})`,
+      tunnels.map((tunnel) => ({
+        value: tunnel.id,
+        label: `${tunnel.name} (#${tunnel.id})`,
       })),
-    [rules],
+    [tunnels],
   )
 
   const nodeOptions = useMemo(
     () =>
       nodes.map((node) => ({
         value: node.id,
-        label: `${node.name} (${node.region ?? '未知区域'})`,
+        label: `${node.name} (${node.node_id})`,
       })),
     [nodes],
   )
@@ -432,10 +437,10 @@ const TrafficStats = () => {
         return
       }
 
-      const header = ['时间', '规则名称', '节点', '上行', '下行', '倍率', '计费流量']
+      const header = ['时间', '隧道名称', '节点', '上行', '下行', '倍率', '计费流量']
       const rows = allRecords.map((record) => [
         formatDateTime(record.hour),
-        record.rule?.name ?? `规则 #${record.rule_id ?? '-'}`,
+        record.rule?.name ?? `隧道 #${record.rule_id ?? '-'}`,
         record.node?.name ?? `节点 #${record.node_id ?? '-'}`,
         formatTraffic(record.traffic_in),
         formatTraffic(record.traffic_out),
@@ -531,7 +536,7 @@ const TrafficStats = () => {
               onChange={(value) => setChartGroupType(value)}
               options={[
                 { label: '总览', value: 'all' },
-                { label: '按规则', value: 'rule' },
+                { label: '按隧道', value: 'rule' },
                 { label: '按节点', value: 'node' },
               ]}
             />
@@ -539,7 +544,7 @@ const TrafficStats = () => {
             {chartGroupType === 'rule' ? (
               <Select
                 allowClear
-                placeholder="选择规则"
+                placeholder="选择隧道"
                 style={{ minWidth: 220 }}
                 options={ruleOptions}
                 value={chartRuleID}
@@ -588,7 +593,7 @@ const TrafficStats = () => {
 
             <Select
               allowClear
-              placeholder="按规则过滤"
+              placeholder="按隧道过滤"
               style={{ minWidth: 220 }}
               options={ruleOptions}
               value={tableRuleID}
@@ -650,10 +655,10 @@ const TrafficStats = () => {
                 render: (value: string) => formatDateTime(value),
               },
               {
-                title: '规则名称',
+                title: '隧道名称',
                 width: 220,
                 render: (_, record) =>
-                  record.rule?.name ?? `规则 #${record.rule_id ?? '-'}`,
+                  record.rule?.name ?? `隧道 #${record.rule_id ?? '-'}`,
               },
               {
                 title: '节点',

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"nodepass-panel/backend/internal/license"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/license"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )

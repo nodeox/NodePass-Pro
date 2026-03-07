@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/version"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/version"
 
 	"go.uber.org/zap"
 )

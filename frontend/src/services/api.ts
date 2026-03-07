@@ -5,6 +5,16 @@ import axios, {
 } from 'axios'
 import { message } from 'antd'
 
+import {
+  getStoredToken,
+  setAuthToken,
+  clearAuthStorage,
+  migrateOldStorage,
+} from '../utils/secureStorage'
+
+// 重新导出供外部使用
+export { setAuthToken, clearAuthStorage, getStoredToken }
+
 import type {
   AdminUserListQuery,
   AdminUserListResult,
@@ -17,47 +27,28 @@ import type {
   BenefitCodeRecord,
   BenefitCodeRedeemResult,
   ChangePasswordPayload,
-  CreateNodePairPayload,
-  CreateNodePayload,
-  CreateNodeResult,
-  CreateRulePayload,
   CreateVipLevelPayload,
   LoginPayload,
   LoginResult,
-  NodeListQuery,
-  NodePairListResult,
-  NodePairRecord,
-  NodeQuotaInfo,
-  NodeRecord,
   PaginationQuery,
   PaginationResult,
   RegisterPayload,
-  RuleListQuery,
-  RuleRecord,
   TrafficQuota,
   TrafficRecordItem,
   TrafficRecordsQuery,
   TrafficUsageQuery,
   TrafficUsageSummary,
-  UpdateNodePairPayload,
-  UpdateNodePayload,
-  UpdateRulePayload,
   UpdateVipLevelPayload,
   User,
   VipMyLevelResult,
   VipLevelRecord,
 } from '../types'
 
-export const AUTH_STORAGE_KEY = 'nodepass-auth'
+// 在模块加载时迁移旧数据
+migrateOldStorage()
 
-type PersistedAuthShape = {
-  state?: {
-    token?: string | null
-    user?: User | null
-    isAuthenticated?: boolean
-  }
-  version?: number
-}
+// 移除未使用的类型定义
+// type PersistedAuthShape 已在 secureStorage 中定义
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean
@@ -73,45 +64,8 @@ const apiClient = axios.create({
   timeout: 20_000,
 })
 
-const parseAuthStorage = (): PersistedAuthShape | null => {
-  const raw = localStorage.getItem(AUTH_STORAGE_KEY)
-  if (!raw) {
-    return null
-  }
-
-  try {
-    return JSON.parse(raw) as PersistedAuthShape
-  } catch (_error) {
-    return null
-  }
-}
-
-export const getStoredToken = (): string | null => {
-  const parsed = parseAuthStorage()
-  return parsed?.state?.token ?? null
-}
-
-export const setAuthToken = (token: string | null): void => {
-  if (!token) {
-    localStorage.removeItem(AUTH_STORAGE_KEY)
-    return
-  }
-
-  const current = parseAuthStorage()
-  const next: PersistedAuthShape = {
-    version: current?.version ?? 0,
-    state: {
-      ...(current?.state ?? {}),
-      token,
-      isAuthenticated: true,
-    },
-  }
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
-}
-
-export const clearAuthStorage = (): void => {
-  localStorage.removeItem(AUTH_STORAGE_KEY)
-}
+// 移除旧的存储函数，使用 secureStorage 模块
+// parseAuthStorage, getStoredToken, setAuthToken, clearAuthStorage 已从 secureStorage 导入
 
 const isAuthPath = (url: string): boolean =>
   ['/auth/login', '/auth/register', '/auth/refresh'].some((path) =>
@@ -124,7 +78,7 @@ const redirectToLogin = (): void => {
   }
 }
 
-const unwrapData = <T>(response: AxiosResponse<ApiSuccessResponse<T>>): T =>
+export const unwrapData = <T>(response: AxiosResponse<ApiSuccessResponse<T>>): T =>
   response.data.data
 
 let isRefreshing = false
@@ -245,95 +199,6 @@ export const authApi = {
   refresh: () =>
     apiClient
       .post<ApiSuccessResponse<{ token: string }>>('/auth/refresh')
-      .then(unwrapData),
-}
-
-export const nodeApi = {
-  list: (params?: NodeListQuery) =>
-    apiClient
-      .get<ApiSuccessResponse<PaginationResult<NodeRecord>>>('/nodes', {
-        params,
-      })
-      .then(unwrapData),
-
-  detail: (id: number) =>
-    apiClient.get<ApiSuccessResponse<NodeRecord>>(`/nodes/${id}`).then(unwrapData),
-
-  create: (payload: CreateNodePayload) =>
-    apiClient
-      .post<ApiSuccessResponse<CreateNodeResult>>('/nodes', payload)
-      .then(unwrapData),
-
-  update: (id: number, payload: UpdateNodePayload) =>
-    apiClient
-      .put<ApiSuccessResponse<NodeRecord>>(`/nodes/${id}`, payload)
-      .then(unwrapData),
-
-  remove: (id: number) =>
-    apiClient.delete<ApiSuccessResponse<null>>(`/nodes/${id}`).then(unwrapData),
-
-  quota: () =>
-    apiClient
-      .get<ApiSuccessResponse<NodeQuotaInfo>>('/nodes/quota')
-      .then(unwrapData),
-}
-
-export const nodePairApi = {
-  list: () =>
-    apiClient
-      .get<ApiSuccessResponse<NodePairListResult>>('/node-pairs')
-      .then(unwrapData),
-
-  create: (payload: CreateNodePairPayload) =>
-    apiClient
-      .post<ApiSuccessResponse<NodePairRecord>>('/node-pairs', payload)
-      .then(unwrapData),
-
-  update: (id: number, payload: UpdateNodePairPayload) =>
-    apiClient
-      .put<ApiSuccessResponse<NodePairRecord>>(`/node-pairs/${id}`, payload)
-      .then(unwrapData),
-
-  remove: (id: number) =>
-    apiClient
-      .delete<ApiSuccessResponse<null>>(`/node-pairs/${id}`)
-      .then(unwrapData),
-
-  toggle: (id: number) =>
-    apiClient
-      .put<ApiSuccessResponse<NodePairRecord>>(`/node-pairs/${id}/toggle`)
-      .then(unwrapData),
-}
-
-export const ruleApi = {
-  list: (params?: RuleListQuery) =>
-    apiClient
-      .get<ApiSuccessResponse<PaginationResult<RuleRecord>>>('/rules', { params })
-      .then(unwrapData),
-
-  detail: (id: number) =>
-    apiClient.get<ApiSuccessResponse<RuleRecord>>(`/rules/${id}`).then(unwrapData),
-
-  create: (payload: CreateRulePayload) =>
-    apiClient.post<ApiSuccessResponse<RuleRecord>>('/rules', payload).then(unwrapData),
-
-  update: (id: number, payload: UpdateRulePayload) =>
-    apiClient
-      .put<ApiSuccessResponse<RuleRecord>>(`/rules/${id}`, payload)
-      .then(unwrapData),
-
-  remove: (id: number) =>
-    apiClient.delete<ApiSuccessResponse<null>>(`/rules/${id}`).then(unwrapData),
-
-  start: (id: number) =>
-    apiClient.post<ApiSuccessResponse<RuleRecord>>(`/rules/${id}/start`).then(unwrapData),
-
-  stop: (id: number) =>
-    apiClient.post<ApiSuccessResponse<RuleRecord>>(`/rules/${id}/stop`).then(unwrapData),
-
-  restart: (id: number) =>
-    apiClient
-      .post<ApiSuccessResponse<RuleRecord>>(`/rules/${id}/restart`)
       .then(unwrapData),
 }
 

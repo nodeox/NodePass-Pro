@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

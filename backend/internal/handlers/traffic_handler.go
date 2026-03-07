@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -22,39 +22,6 @@ func NewTrafficHandler(db *gorm.DB) *TrafficHandler {
 	return &TrafficHandler{
 		trafficService: services.NewTrafficService(db),
 	}
-}
-
-// ReportTraffic POST /api/v1/nodes/traffic/report （node token 认证）
-func (h *TrafficHandler) ReportTraffic(c *gin.Context) {
-	type requestPayload struct {
-		Token   string                       `json:"token"`
-		Records []services.TrafficReportItem `json:"records"`
-	}
-
-	var req requestPayload
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
-		return
-	}
-
-	token := strings.TrimSpace(req.Token)
-	if token == "" {
-		token = extractNodeToken(c)
-	}
-	if token == "" {
-		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未提供节点 token")
-		return
-	}
-
-	accepted, err := h.trafficService.ReportTraffic(token, req.Records)
-	if err != nil {
-		writeServiceError(c, err, "TRAFFIC_REPORT_FAILED")
-		return
-	}
-
-	utils.Success(c, gin.H{
-		"accepted": accepted,
-	})
 }
 
 // GetQuota GET /api/v1/traffic/quota

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/database"
-	"nodepass-panel/backend/internal/models"
+	"nodepass-pro/backend/internal/database"
+	"nodepass-pro/backend/internal/models"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

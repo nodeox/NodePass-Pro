@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/database"
-	"nodepass-panel/backend/internal/models"
-	"nodepass-panel/backend/internal/services"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/database"
+	"nodepass-pro/backend/internal/models"
+	"nodepass-pro/backend/internal/services"
+	"nodepass-pro/backend/internal/utils"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

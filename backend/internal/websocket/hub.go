@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	"nodepass-panel/backend/internal/config"
-	"nodepass-panel/backend/internal/services"
+	"nodepass-pro/backend/internal/config"
+	"nodepass-pro/backend/internal/services"
 
 	"github.com/golang-jwt/jwt/v5"
 	gorilla "github.com/gorilla/websocket"
@@ -60,10 +61,11 @@ type Hub struct {
 
 // Client WebSocket 客户端连接。
 type Client struct {
-	hub    *Hub
-	conn   *gorilla.Conn
-	send   chan []byte
-	userID uint
+	hub       *Hub
+	conn      *gorilla.Conn
+	send      chan []byte
+	userID    uint
+	closeOnce sync.Once  // 确保 send channel 只关闭一次
 }
 
 // NewHub 创建并启动 WebSocket Hub。
@@ -77,37 +79,7 @@ func NewHub() *Hub {
 		upgrader: gorilla.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				// 验证来源，防止 CSRF 攻击
-				origin := r.Header.Get("Origin")
-				if origin == "" {
-					// 如果没有 Origin 头，检查 Referer
-					origin = r.Header.Get("Referer")
-				}
-
-				// 允许本地开发环境
-				if origin == "" ||
-					strings.Contains(origin, "localhost") ||
-					strings.Contains(origin, "127.0.0.1") {
-					return true
-				}
-
-				// 生产环境应该检查配置的允许来源列表
-				// TODO: 从配置文件读取允许的来源
-				cfg := config.GlobalConfig
-				if cfg != nil && cfg.Server.AllowedOrigins != nil {
-					for _, allowed := range cfg.Server.AllowedOrigins {
-						if strings.Contains(origin, allowed) {
-							return true
-						}
-					}
-				}
-
-				zap.L().Warn("WebSocket 连接被拒绝：不允许的来源",
-					zap.String("origin", origin),
-					zap.String("remote_addr", r.RemoteAddr))
-				return false
-			},
+			CheckOrigin:     checkWebSocketOrigin,
 		},
 	}
 	go hub.run()
@@ -219,7 +191,10 @@ func (h *Hub) unregisterClientLocked(client *Client) {
 		}
 	}
 
-	close(client.send)
+	// 使用 sync.Once 确保 channel 只关闭一次
+	client.closeOnce.Do(func() {
+		close(client.send)
+	})
 }
 
 func (h *Hub) dispatchMessage(message outboundMessage) {
@@ -381,4 +356,109 @@ func buildPayload(messageType MessageType, data any) ([]byte, error) {
 		return nil, fmt.Errorf("序列化 WebSocket 消息失败: %w", err)
 	}
 	return payload, nil
+}
+
+// checkWebSocketOrigin 验证 WebSocket 连接的来源。
+func checkWebSocketOrigin(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+
+	// 如果没有 Origin 头，尝试从 Referer 获取
+	if origin == "" {
+		referer := strings.TrimSpace(r.Header.Get("Referer"))
+		if referer != "" {
+			// 从 Referer 中提取 origin
+			if parsedURL, err := url.Parse(referer); err == nil {
+				origin = fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+			}
+		}
+	}
+
+	// 如果仍然没有 origin，拒绝连接（即使在开发模式）
+	cfg := config.GlobalConfig
+	isDevelopment := cfg != nil && cfg.Server.Mode != "release"
+
+	if origin == "" {
+		// 开发模式下也要求 Origin，但给出更友好的日志
+		if isDevelopment {
+			zap.L().Warn("WebSocket 连接被拒绝：缺少 Origin 头（开发模式也需要 Origin）",
+				zap.String("remote_addr", r.RemoteAddr),
+				zap.String("hint", "请确保客户端发送 Origin 头"))
+		} else {
+			zap.L().Warn("WebSocket 连接被拒绝：缺少 Origin 头",
+				zap.String("remote_addr", r.RemoteAddr))
+		}
+		return false
+	}
+
+	// 解析 origin URL
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		zap.L().Warn("WebSocket 连接被拒绝：无效的 Origin 格式",
+			zap.String("origin", origin),
+			zap.String("error", err.Error()))
+		return false
+	}
+
+	// 开发环境：允许 localhost 和 127.0.0.1
+	if isDevelopment {
+		if isLocalhost(originURL.Hostname()) {
+			return true
+		}
+	}
+
+	// 生产环境或配置了允许来源：检查配置的允许来源列表
+	if cfg != nil && cfg.Server.AllowedOrigins != nil {
+		for _, allowed := range cfg.Server.AllowedOrigins {
+			if matchOrigin(originURL, allowed) {
+				return true
+			}
+		}
+	}
+
+	// 如果没有配置允许来源，且是生产环境，拒绝所有非本地连接
+	zap.L().Warn("WebSocket 连接被拒绝：不允许的来源",
+		zap.String("origin", origin),
+		zap.String("remote_addr", r.RemoteAddr))
+	return false
+}
+
+// isLocalhost 检查主机名是否为本地地址。
+func isLocalhost(hostname string) bool {
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+	return hostname == "localhost" ||
+		hostname == "127.0.0.1" ||
+		hostname == "::1" ||
+		hostname == "[::1]"
+}
+
+// matchOrigin 检查 origin 是否匹配允许的来源。
+// 支持精确匹配和通配符匹配。
+func matchOrigin(originURL *url.URL, allowed string) bool {
+	allowed = strings.TrimSpace(allowed)
+	if allowed == "" {
+		return false
+	}
+
+	// 如果允许的来源是完整的 URL，进行精确匹配
+	if strings.HasPrefix(allowed, "http://") || strings.HasPrefix(allowed, "https://") {
+		allowedURL, err := url.Parse(allowed)
+		if err != nil {
+			return false
+		}
+		// 精确匹配 scheme 和 host
+		return originURL.Scheme == allowedURL.Scheme &&
+			strings.EqualFold(originURL.Host, allowedURL.Host)
+	}
+
+	// 如果允许的来源只是主机名（支持通配符）
+	// 例如：example.com, *.example.com
+	if strings.HasPrefix(allowed, "*.") {
+		// 通配符匹配：*.example.com 匹配 sub.example.com
+		domain := strings.TrimPrefix(allowed, "*.")
+		hostname := strings.ToLower(originURL.Hostname())
+		return strings.HasSuffix(hostname, "."+domain) || hostname == domain
+	}
+
+	// 精确主机名匹配
+	return strings.EqualFold(originURL.Hostname(), allowed)
 }

@@ -3,23 +3,13 @@ package services
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
-	"nodepass-panel/backend/internal/models"
-	"nodepass-panel/backend/internal/utils"
+	"nodepass-pro/backend/internal/models"
 
 	"gorm.io/gorm"
 )
-
-// TrafficReportItem 节点上报的流量记录项。
-type TrafficReportItem struct {
-	RuleID     uint       `json:"rule_id"`
-	TrafficIn  int64      `json:"traffic_in"`
-	TrafficOut int64      `json:"traffic_out"`
-	Hour       *time.Time `json:"hour"`
-}
 
 // QuotaResult 用户配额信息。
 type QuotaResult struct {
@@ -65,110 +55,6 @@ type TrafficService struct {
 // NewTrafficService 创建流量服务实例。
 func NewTrafficService(db *gorm.DB) *TrafficService {
 	return &TrafficService{db: db}
-}
-
-// ReportTraffic 节点上报流量并更新配额使用情况。
-func (s *TrafficService) ReportTraffic(nodeToken string, records []TrafficReportItem) (int, error) {
-	if len(records) == 0 {
-		return 0, nil
-	}
-
-	node, err := NewConfigDistributionService(s.db).AuthenticateNode(nodeToken)
-	if err != nil {
-		return 0, err
-	}
-
-	tx := s.db.Begin()
-	if tx.Error != nil {
-		return 0, fmt.Errorf("开启事务失败: %w", tx.Error)
-	}
-
-	affectedUsers := make(map[uint]struct{})
-	accepted := 0
-	for _, item := range records {
-		if item.RuleID == 0 {
-			utils.RollbackTransaction(tx)
-			return accepted, fmt.Errorf("%w: rule_id 不能为空", ErrInvalidParams)
-		}
-		if item.TrafficIn < 0 || item.TrafficOut < 0 {
-			utils.RollbackTransaction(tx)
-			return accepted, fmt.Errorf("%w: traffic_in/traffic_out 不能为负数", ErrInvalidParams)
-		}
-
-		var rule models.Rule
-		if err = tx.Model(&models.Rule{}).
-			Where("id = ? AND entry_node_id = ?", item.RuleID, node.ID).
-			First(&rule).Error; err != nil {
-			utils.RollbackTransaction(tx)
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return accepted, fmt.Errorf("%w: 规则不存在或不属于当前节点", ErrNotFound)
-			}
-			return accepted, fmt.Errorf("查询规则失败: %w", err)
-		}
-
-		var user models.User
-		if err = tx.First(&user, rule.UserID).Error; err != nil {
-			utils.RollbackTransaction(tx)
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return accepted, fmt.Errorf("%w: 用户不存在", ErrNotFound)
-			}
-			return accepted, fmt.Errorf("查询用户失败: %w", err)
-		}
-
-		vipMultiplier, vipErr := s.getVIPMultiplier(tx, user.VipLevel)
-		if vipErr != nil {
-			tx.Rollback()
-			return accepted, vipErr
-		}
-
-		nodeMultiplier := node.TrafficMultiplier
-		finalMultiplier := vipMultiplier * nodeMultiplier
-		totalTraffic := item.TrafficIn + item.TrafficOut
-		calculatedTraffic := int64(math.Round(float64(totalTraffic) * finalMultiplier))
-
-		hour := time.Now().UTC().Truncate(time.Hour)
-		if item.Hour != nil {
-			hour = item.Hour.UTC().Truncate(time.Hour)
-		}
-
-		if err = s.upsertTrafficRecord(tx, user.ID, rule.ID, node.ID, hour, item.TrafficIn, item.TrafficOut,
-			vipMultiplier, nodeMultiplier, finalMultiplier, calculatedTraffic); err != nil {
-			tx.Rollback()
-			return accepted, err
-		}
-
-		if err = tx.Model(&models.User{}).
-			Where("id = ?", user.ID).
-			UpdateColumn("traffic_used", gorm.Expr("traffic_used + ?", calculatedTraffic)).Error; err != nil {
-			tx.Rollback()
-			return accepted, fmt.Errorf("更新用户流量使用量失败: %w", err)
-		}
-
-		if err = tx.Model(&models.Rule{}).
-			Where("id = ?", rule.ID).
-			Updates(map[string]interface{}{
-				"traffic_in":  gorm.Expr("traffic_in + ?", item.TrafficIn),
-				"traffic_out": gorm.Expr("traffic_out + ?", item.TrafficOut),
-			}).Error; err != nil {
-			tx.Rollback()
-			return accepted, fmt.Errorf("更新规则流量失败: %w", err)
-		}
-
-		affectedUsers[user.ID] = struct{}{}
-		accepted++
-	}
-
-	if err = tx.Commit().Error; err != nil {
-		return accepted, fmt.Errorf("提交事务失败: %w", err)
-	}
-
-	for userID := range affectedUsers {
-		if _, checkErr := s.CheckQuota(userID); checkErr != nil {
-			return accepted, checkErr
-		}
-	}
-
-	return accepted, nil
 }
 
 // GetQuota 获取用户流量配额信息。
