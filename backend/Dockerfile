@@ -7,7 +7,8 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o /usr/local/bin/nodepass-backend ./cmd/server
+RUN go build -o /usr/local/bin/nodepass-backend ./cmd/server \
+    && go build -o /usr/local/bin/nodepass-admin-bootstrap ./cmd/admin-bootstrap
 
 EXPOSE 8080
 

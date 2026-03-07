@@ -45,15 +45,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
 
 - 自动检测运行环境并安装缺失依赖（`git`/`curl`/`docker`/`docker compose`）；
 - 交互式问答部署（前端域名、后端域名、数据库类型与连接、Redis、JWT 等）；
+- 交互式创建/更新管理员账号（用户名、邮箱、密码）；
 - 自动生成运行配置：`backend/configs/config.runtime.yaml`；
 - 自动调用 `scripts/deploy.sh` 完成部署；
+- 部署成功后输出完整访问信息与管理员登录信息；
 - 默认安装目录：`/opt/NodePass-Pro`（可用 `--install-dir` 覆盖）。
 
 非交互模式示例：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) \
-  --non-interactive --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com --email admin@example.com
+  --non-interactive --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com \
+  --email admin@example.com --admin-username admin --admin-email admin@example.com --admin-password 'YourStrongPassword'
 ```
 
 1) 仅部署核心服务（PostgreSQL + Redis + Backend + Frontend）
