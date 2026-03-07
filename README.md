@@ -33,6 +33,27 @@ docker compose up -d --build
 
 脚本路径：`scripts/deploy.sh`
 
+### 远程一键命令（推荐）
+
+可直接使用远程引导脚本（风格与 `bash <(curl -sL xxx/install.sh)` 一致）：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh)
+```
+
+启用 Caddy + 域名示例：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) \
+  --with-caddy --domain panel.example.com --email admin@example.com
+```
+
+说明：
+
+- 引导脚本默认克隆到 `/opt/NodePass-Pro`，可用 `--install-dir` 覆盖；
+- 引导脚本会自动拉取/更新仓库后调用 `scripts/deploy.sh`；
+- 所有未识别参数都会透传给 `scripts/deploy.sh`。
+
 1) 仅部署核心服务（PostgreSQL + Redis + Backend + Frontend）
 
 ```bash
