@@ -2,7 +2,7 @@
 __EMAIL_BLOCK__
 }
 
-__DOMAIN__ {
+__FRONTEND_DOMAIN__ {
     encode zstd gzip
 
     @api path /api/* /ws*
@@ -19,3 +19,5 @@ __DOMAIN__ {
         format console
     }
 }
+
+__BACKEND_BLOCK__

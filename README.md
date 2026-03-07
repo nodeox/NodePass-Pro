@@ -33,7 +33,7 @@ docker compose up -d --build
 
 脚本路径：`scripts/deploy.sh`
 
-### 远程一键命令（推荐）
+### 远程交互式一键部署（推荐）
 
 可直接使用远程引导脚本（风格与 `bash <(curl -sL xxx/install.sh)` 一致）：
 
@@ -41,18 +41,20 @@ docker compose up -d --build
 bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh)
 ```
 
-启用 Caddy + 域名示例：
+脚本能力：
+
+- 自动检测运行环境并安装缺失依赖（`git`/`curl`/`docker`/`docker compose`）；
+- 交互式问答部署（前端域名、后端域名、数据库类型与连接、Redis、JWT 等）；
+- 自动生成运行配置：`backend/configs/config.runtime.yaml`；
+- 自动调用 `scripts/deploy.sh` 完成部署；
+- 默认安装目录：`/opt/NodePass-Pro`（可用 `--install-dir` 覆盖）。
+
+非交互模式示例：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) \
-  --with-caddy --domain panel.example.com --email admin@example.com
+  --non-interactive --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com --email admin@example.com
 ```
-
-说明：
-
-- 引导脚本默认克隆到 `/opt/NodePass-Pro`，可用 `--install-dir` 覆盖；
-- 引导脚本会自动拉取/更新仓库后调用 `scripts/deploy.sh`；
-- 所有未识别参数都会透传给 `scripts/deploy.sh`。
 
 1) 仅部署核心服务（PostgreSQL + Redis + Backend + Frontend）
 
@@ -67,7 +69,7 @@ cd NodePass-Pro
 ```bash
 git clone https://github.com/nodeox/NodePass-Pro.git
 cd NodePass-Pro
-./scripts/deploy.sh --with-caddy --domain panel.example.com --email admin@example.com
+./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --email admin@example.com
 ```
 
 3) 自定义 Caddy 端口（例如 8080/8443）
@@ -75,19 +77,19 @@ cd NodePass-Pro
 ```bash
 git clone https://github.com/nodeox/NodePass-Pro.git
 cd NodePass-Pro
-./scripts/deploy.sh --with-caddy --domain panel.example.com --caddy-http-port 8080 --caddy-https-port 8443
+./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com --caddy-http-port 8080 --caddy-https-port 8443
 ```
 
 4) 停止服务
 
 ```bash
-git clone https://github.com/nodeox/NodePass-Pro.git
-cd NodePass-Pro
 ./scripts/deploy.sh --down
 ```
 
 说明：
 
 - 启用 Caddy 时会自动生成配置文件：`deploy/caddy/Caddyfile`；
-- Caddy 会将 `/api/*` 与 `/ws` 反代到后端，其余路径反代到前端；
+- Caddy 默认将前端域名的 `/api/*`、`/ws` 反代到后端，其余路径反代到前端；
+- 可通过 `--backend-domain` 暴露独立后端域名；
+- 可通过环境变量 `BACKEND_CONFIG_FILE` 与 `FRONTEND_BIND` 覆盖后端配置文件和前端监听地址；
 - 请确保域名 DNS 已解析到部署机器，否则自动证书签发会失败。
