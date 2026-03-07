@@ -26,13 +26,13 @@ cd license-center
 
 ```bash
 # 安装
-bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-License-Center/main/install.sh) --install
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 
 # 升级
-bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-License-Center/main/install.sh) --upgrade
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --upgrade
 
 # 卸载
-bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-License-Center/main/install.sh) --uninstall
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --uninstall
 ```
 
 ## 默认管理员
