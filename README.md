@@ -95,6 +95,8 @@ cd NodePass-Pro
 - Caddy 默认将前端域名的 `/api/*`、`/ws` 反代到后端，其余路径反代到前端；
 - Caddy 同时暴露节点安装入口：`/nodeclient-install.sh` 与 `/downloads/*`；
 - 节点二进制文件放置说明见：`deploy/nodeclient/README.md`；
+- `scripts/deploy.sh` 默认会自动构建 nodeclient 二进制并生成 `.sha256` 到 `deploy/nodeclient/downloads/`；
+- 如需跳过可使用：`./scripts/deploy.sh --skip-nodeclient-build`；
 - 可通过 `--backend-domain` 暴露独立后端域名；
 - 可通过环境变量 `BACKEND_CONFIG_FILE` 与 `FRONTEND_BIND` 覆盖后端配置文件和前端监听地址；
 - 请确保域名 DNS 已解析到部署机器，否则自动证书签发会失败。

@@ -13,6 +13,7 @@ DOWN=false
 NO_BUILD=false
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
+AUTO_BUILD_NODECLIENT=true
 
 log_info() {
   echo "[INFO] $*"
@@ -42,6 +43,7 @@ NodePass Pro 一键部署脚本
   --caddy-http-port <端口>        Caddy HTTP 端口，默认 80
   --caddy-https-port <端口>       Caddy HTTPS 端口，默认 443
   --no-build                      启动时不执行镜像构建
+  --skip-nodeclient-build         跳过 nodeclient 二进制自动构建
   --down                          停止并移除当前部署
   -h, --help                      显示帮助
 
@@ -49,11 +51,13 @@ NodePass Pro 一键部署脚本
   BACKEND_CONFIG_FILE             挂载到 backend 容器的配置文件路径
                                   默认: ./backend/configs/config.docker.yaml
   FRONTEND_BIND                   前端绑定地址，默认: 127.0.0.1:5173
+  AUTO_BUILD_NODECLIENT           是否自动构建 nodeclient 下载包（默认: true）
 
 示例:
   ./scripts/deploy.sh
   ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --email admin@example.com
   ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
+  ./scripts/deploy.sh --skip-nodeclient-build
   BACKEND_CONFIG_FILE=./backend/configs/config.runtime.yaml ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com
 EOF
 }
@@ -174,6 +178,10 @@ parse_args() {
         NO_BUILD=true
         shift
         ;;
+      --skip-nodeclient-build)
+        AUTO_BUILD_NODECLIENT=false
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
@@ -193,6 +201,21 @@ run_compose() {
     CADDY_HTTP_PORT="$CADDY_HTTP_PORT" \
     CADDY_HTTPS_PORT="$CADDY_HTTPS_PORT" \
     "$@"
+}
+
+build_nodeclient_downloads_if_needed() {
+  local build_script="${ROOT_DIR}/scripts/build-nodeclient-downloads.sh"
+  local auto_build="${AUTO_BUILD_NODECLIENT:-true}"
+  if [[ "${auto_build}" != "true" ]]; then
+    log_info "已跳过 nodeclient 构建（AUTO_BUILD_NODECLIENT=false）。"
+    return
+  fi
+  if [[ ! -x "$build_script" ]]; then
+    log_error "未找到可执行构建脚本: $build_script"
+    exit 1
+  fi
+  log_info "开始自动构建 nodeclient 下载包..."
+  "$build_script"
 }
 
 main() {
@@ -238,6 +261,8 @@ main() {
   if [[ "$NO_BUILD" == false ]]; then
     up_args+=("--build")
   fi
+
+  build_nodeclient_downloads_if_needed
 
   log_info "开始部署服务..."
   run_compose "${compose_cmd[@]}" up "${up_args[@]}"
