@@ -7,6 +7,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { AUTH_STORAGE_KEY, setAuthToken, telegramApi } from '../../services/api'
 import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
+import { getHomePathByRole } from '../../utils/route'
 import type { User } from '../../types'
 
 type LoginFormValues = {
@@ -37,6 +38,7 @@ const Login = () => {
   const login = useAuthStore((state) => state.login)
   const isLoading = useAuthStore((state) => state.isLoading)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const user = useAuthStore((state) => state.user)
 
   const telegramBotUsername = useMemo(
     () => import.meta.env.VITE_TELEGRAM_BOT_USERNAME?.trim() ?? '',
@@ -45,9 +47,9 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      navigate(getHomePathByRole(user?.role), { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, user?.role])
 
   const handleSubmit = async (values: LoginFormValues) => {
     try {
@@ -61,7 +63,8 @@ const Login = () => {
       }
 
       message.success('登录成功')
-      navigate('/dashboard', { replace: true })
+      const currentUser = useAuthStore.getState().user
+      navigate(getHomePathByRole(currentUser?.role), { replace: true })
     } catch (error) {
       message.error(getErrorMessage(error, '登录失败'))
     }
@@ -85,7 +88,7 @@ const Login = () => {
         })
         setAuthToken(result.token)
         message.success('Telegram 登录成功')
-        navigate('/dashboard', { replace: true })
+        navigate(getHomePathByRole(result.user?.role), { replace: true })
       } catch (error) {
         message.error(getErrorMessage(error, 'Telegram 登录失败'))
       }

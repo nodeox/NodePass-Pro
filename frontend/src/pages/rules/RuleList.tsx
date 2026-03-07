@@ -18,7 +18,7 @@ import {
   message,
 } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
@@ -27,22 +27,23 @@ import { useAppStore } from '../../store/app'
 import type { RuleRecord } from '../../types'
 import { getErrorMessage } from '../../utils/error'
 import { formatBytes } from '../../utils/format'
+import { buildPortalPath, resolvePortalByPathname } from '../../utils/route'
 
 const modeMap: Record<
   string,
   { label: string; color: 'blue' | 'purple' | 'default' }
 > = {
-  single: { label: 'single', color: 'blue' },
-  tunnel: { label: 'tunnel', color: 'purple' },
+  single: { label: '单节点', color: 'blue' },
+  tunnel: { label: '隧道', color: 'purple' },
 }
 
 const statusMap: Record<
   string,
   { label: string; color: 'green' | 'orange' | 'default' }
 > = {
-  running: { label: 'running', color: 'green' },
-  stopped: { label: 'stopped', color: 'default' },
-  paused: { label: 'paused', color: 'orange' },
+  running: { label: '运行中', color: 'green' },
+  stopped: { label: '已停止', color: 'default' },
+  paused: { label: '已暂停', color: 'orange' },
 }
 
 const protocolLabelMap: Record<string, string> = {
@@ -72,6 +73,8 @@ const renderStatusTag = (status: string) => {
 const RuleList = () => {
   usePageTitle('规则管理')
   const navigate = useNavigate()
+  const location = useLocation()
+  const portal = resolvePortalByPathname(location.pathname)
 
   const [rules, setRules] = useState<RuleRecord[]>([])
   const [loading, setLoading] = useState<boolean>(false)
@@ -214,7 +217,10 @@ const RuleList = () => {
           >
             刷新
           </Button>
-          <Button type="primary" onClick={() => navigate('/rules/new')}>
+          <Button
+            type="primary"
+            onClick={() => navigate(buildPortalPath(portal, '/rules/new'))}
+          >
             创建规则
           </Button>
         </Space>
@@ -227,9 +233,9 @@ const RuleList = () => {
           placeholder="按状态过滤"
           value={statusFilter}
           options={[
-            { label: 'running', value: 'running' },
-            { label: 'stopped', value: 'stopped' },
-            { label: 'paused', value: 'paused' },
+            { label: '运行中', value: 'running' },
+            { label: '已停止', value: 'stopped' },
+            { label: '已暂停', value: 'paused' },
           ]}
           onChange={(value) => {
             setStatusFilter(value)
@@ -242,8 +248,8 @@ const RuleList = () => {
           placeholder="按模式过滤"
           value={modeFilter}
           options={[
-            { label: 'single', value: 'single' },
-            { label: 'tunnel', value: 'tunnel' },
+            { label: '单节点', value: 'single' },
+            { label: '隧道', value: 'tunnel' },
           ]}
           onChange={(value) => {
             setModeFilter(value)
@@ -399,7 +405,9 @@ const RuleList = () => {
                     type="link"
                     icon={<EditOutlined />}
                     disabled={record.status !== 'stopped'}
-                    onClick={() => navigate(`/rules/${record.id}/edit`)}
+                    onClick={() =>
+                      navigate(buildPortalPath(portal, `/rules/${record.id}/edit`))
+                    }
                   >
                     编辑
                   </Button>

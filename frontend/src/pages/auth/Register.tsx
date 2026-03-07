@@ -6,6 +6,7 @@ import BrandLogo from '../../components/common/BrandLogo'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
+import { getHomePathByRole } from '../../utils/route'
 
 type RegisterFormValues = {
   username: string
@@ -21,12 +22,13 @@ const Register = () => {
   const register = useAuthStore((state) => state.register)
   const isLoading = useAuthStore((state) => state.isLoading)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const user = useAuthStore((state) => state.user)
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      navigate(getHomePathByRole(user?.role), { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, user?.role])
 
   const handleSubmit = async (values: RegisterFormValues) => {
     try {

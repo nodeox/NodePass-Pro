@@ -1,10 +1,6 @@
 import { Spin } from 'antd'
 import { useEffect } from 'react'
-import {
-  Navigate,
-  Outlet,
-  createBrowserRouter,
-} from 'react-router-dom'
+import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom'
 
 import MainLayout from './components/Layout/MainLayout'
 import Login from './pages/auth/Login'
@@ -12,6 +8,7 @@ import Register from './pages/auth/Register'
 import BenefitCodeManage from './pages/benefit-codes/BenefitCodeManage'
 import RedeemCode from './pages/benefit-codes/RedeemCode'
 import Dashboard from './pages/dashboard/Dashboard'
+import UserDashboard from './pages/dashboard/UserDashboard'
 import NodeList from './pages/nodes/NodeList'
 import Profile from './pages/profile/Profile'
 import RuleForm from './pages/rules/RuleForm'
@@ -24,6 +21,7 @@ import TrafficStats from './pages/traffic/TrafficStats'
 import VipCenter from './pages/vip/VipCenter'
 import VipLevelManage from './pages/vip/VipLevelManage'
 import { useAuthStore } from './store/auth'
+import { getHomePathByRole } from './utils/route'
 
 const FullScreenLoading = () => (
   <div className="flex min-h-screen items-center justify-center">
@@ -63,10 +61,20 @@ const AdminRoute = () => {
   }
 
   if (user.role !== 'admin') {
-    return <Navigate to="/" replace />
+    return <Navigate to="/user/dashboard" replace />
   }
 
   return <Outlet />
+}
+
+const RoleHomeRedirect = () => {
+  const user = useAuthStore((state) => state.user)
+
+  if (!user) {
+    return <FullScreenLoading />
+  }
+
+  return <Navigate to={getHomePathByRole(user.role)} replace />
 }
 
 const router = createBrowserRouter([
@@ -83,51 +91,95 @@ const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        element: <MainLayout />,
+        index: true,
+        element: <RoleHomeRedirect />,
+      },
+      {
+        path: 'user',
+        element: <Outlet />,
         children: [
           {
-            index: true,
-            element: <Navigate to="/dashboard" replace />,
-          },
-          {
-            path: 'dashboard',
-            element: <Dashboard />,
-          },
-          {
-            path: 'nodes',
-            element: <NodeList />,
-          },
-          {
-            path: 'rules',
-            element: <RuleList />,
-          },
-          {
-            path: 'rules/new',
-            element: <RuleForm />,
-          },
-          {
-            path: 'rules/:id/edit',
-            element: <RuleForm />,
-          },
-          {
-            path: 'traffic',
-            element: <TrafficStats />,
-          },
-          {
-            path: 'vip',
-            element: <VipCenter />,
-          },
-          {
-            path: 'benefit-codes/redeem',
-            element: <RedeemCode />,
-          },
-          {
-            path: 'profile',
-            element: <Profile />,
-          },
-          {
-            element: <AdminRoute />,
+            element: <MainLayout portal="user" />,
             children: [
+              {
+                index: true,
+                element: <Navigate to="/user/dashboard" replace />,
+              },
+              {
+                path: 'dashboard',
+                element: <UserDashboard />,
+              },
+              {
+                path: 'nodes',
+                element: <NodeList />,
+              },
+              {
+                path: 'rules',
+                element: <RuleList />,
+              },
+              {
+                path: 'rules/new',
+                element: <RuleForm />,
+              },
+              {
+                path: 'rules/:id/edit',
+                element: <RuleForm />,
+              },
+              {
+                path: 'traffic',
+                element: <TrafficStats />,
+              },
+              {
+                path: 'vip',
+                element: <VipCenter />,
+              },
+              {
+                path: 'benefit-codes/redeem',
+                element: <RedeemCode />,
+              },
+              {
+                path: 'profile',
+                element: <Profile />,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        path: 'admin',
+        element: <AdminRoute />,
+        children: [
+          {
+            element: <MainLayout portal="admin" />,
+            children: [
+              {
+                index: true,
+                element: <Navigate to="/admin/dashboard" replace />,
+              },
+              {
+                path: 'dashboard',
+                element: <Dashboard />,
+              },
+              {
+                path: 'nodes',
+                element: <NodeList />,
+              },
+              {
+                path: 'rules',
+                element: <RuleList />,
+              },
+              {
+                path: 'rules/new',
+                element: <RuleForm />,
+              },
+              {
+                path: 'rules/:id/edit',
+                element: <RuleForm />,
+              },
+              {
+                path: 'traffic',
+                element: <TrafficStats />,
+              },
               {
                 path: 'vip/levels',
                 element: <VipLevelManage />,
@@ -151,6 +203,10 @@ const router = createBrowserRouter([
               {
                 path: 'system/users',
                 element: <UserManage />,
+              },
+              {
+                path: 'profile',
+                element: <Profile />,
               },
             ],
           },

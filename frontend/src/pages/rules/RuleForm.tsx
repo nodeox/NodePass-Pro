@@ -15,13 +15,14 @@ import {
   message,
 } from 'antd'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { nodeApi, nodePairApi, ruleApi } from '../../services/api'
 import type { CreateRulePayload, NodeRecord, UpdateRulePayload } from '../../types'
 import { getErrorMessage } from '../../utils/error'
+import { buildPortalPath, resolvePortalByPathname } from '../../utils/route'
 
 type RuleMode = 'single' | 'tunnel'
 type RuleProtocol = 'tcp' | 'udp' | 'ws' | 'tls' | 'quic'
@@ -83,9 +84,11 @@ const toRuleID = (rawID?: string): number | null => {
 
 const RuleForm = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams<{ id: string }>()
   const ruleID = toRuleID(id)
   const isEdit = ruleID !== null
+  const portal = resolvePortalByPathname(location.pathname)
 
   usePageTitle(isEdit ? '编辑规则' : '创建规则')
 
@@ -149,7 +152,7 @@ const RuleForm = () => {
       } catch (error) {
         message.error(getErrorMessage(error, '规则页面初始化失败'))
         if (!cancelled) {
-          navigate('/rules', { replace: true })
+          navigate(buildPortalPath(portal, '/rules'), { replace: true })
         }
       } finally {
         if (!cancelled) {
@@ -162,7 +165,7 @@ const RuleForm = () => {
     return () => {
       cancelled = true
     }
-  }, [form, isEdit, navigate, ruleID])
+  }, [form, isEdit, navigate, portal, ruleID])
 
   useEffect(() => {
     if (mode === 'single') {
@@ -336,7 +339,7 @@ const RuleForm = () => {
         await ruleApi.create(payload)
         message.success('规则创建成功')
       }
-      navigate('/rules')
+      navigate(buildPortalPath(portal, '/rules'))
     } catch (error) {
       message.error(getErrorMessage(error, '规则保存失败'))
     } finally {
@@ -369,7 +372,10 @@ const RuleForm = () => {
       title={isEdit ? '编辑规则' : '创建规则'}
       description="支持单节点转发和隧道转发。"
       extra={
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/rules')}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate(buildPortalPath(portal, '/rules'))}
+        >
           返回列表
         </Button>
       }
@@ -494,7 +500,9 @@ const RuleForm = () => {
                 >
                   {isEdit ? '保存规则' : '创建规则'}
                 </Button>
-                <Button onClick={() => navigate('/rules')}>取消</Button>
+                <Button onClick={() => navigate(buildPortalPath(portal, '/rules'))}>
+                  取消
+                </Button>
               </Space>
             </Form.Item>
           </Form>

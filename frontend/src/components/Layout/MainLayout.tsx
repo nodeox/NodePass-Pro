@@ -10,6 +10,7 @@ import {
   NodeIndexOutlined,
   NotificationOutlined,
   SettingOutlined,
+  SwapOutlined,
   UserOutlined,
   WifiOutlined,
 } from '@ant-design/icons'
@@ -21,84 +22,123 @@ import {
   Layout,
   Menu,
   Space,
+  Tag,
   Tooltip,
   Typography,
   type MenuProps,
 } from 'antd'
-import { useMemo } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useAuthStore } from '../../store/auth'
 import { useAppStore } from '../../store/app'
 import type { AppNotification } from '../../types'
+import { buildPortalPath, type PortalType } from '../../utils/route'
 
 type MenuEntry = {
   key: string
   label: string
-  icon: React.ReactNode
-  adminOnly?: boolean
+  icon: ReactNode
 }
 
-const menuEntries: MenuEntry[] = [
+type MainLayoutProps = {
+  portal: PortalType
+}
+
+const getUserMenuEntries = (): MenuEntry[] => [
   {
-    key: '/dashboard',
+    key: '/user/dashboard',
     label: '仪表盘',
     icon: <DashboardOutlined />,
   },
   {
-    key: '/nodes',
+    key: '/user/nodes',
     label: '节点管理',
     icon: <NodeIndexOutlined />,
   },
   {
-    key: '/rules',
+    key: '/user/rules',
     label: '规则管理',
     icon: <SettingOutlined />,
   },
   {
-    key: '/traffic',
+    key: '/user/traffic',
     label: '流量统计',
     icon: <DashboardOutlined />,
   },
   {
-    key: '/vip',
+    key: '/user/vip',
     label: 'VIP 中心',
     icon: <CrownOutlined />,
   },
   {
-    key: '/benefit-codes/redeem',
+    key: '/user/benefit-codes/redeem',
     label: '权益码',
     icon: <GiftOutlined />,
   },
   {
-    key: '/profile',
+    key: '/user/profile',
     label: '个人中心',
     icon: <UserOutlined />,
   },
+]
+
+const getAdminMenuEntries = (): MenuEntry[] => [
   {
-    key: '/system/users',
+    key: '/admin/dashboard',
+    label: '仪表盘',
+    icon: <DashboardOutlined />,
+  },
+  {
+    key: '/admin/system/users',
     label: '用户管理',
     icon: <UserOutlined />,
-    adminOnly: true,
   },
   {
-    key: '/system/config',
-    label: '系统管理',
+    key: '/admin/nodes',
+    label: '节点管理',
+    icon: <NodeIndexOutlined />,
+  },
+  {
+    key: '/admin/rules',
+    label: '规则管理',
     icon: <SettingOutlined />,
-    adminOnly: true,
   },
   {
-    key: '/system/announcements',
-    label: '系统公告',
+    key: '/admin/traffic',
+    label: '流量统计',
+    icon: <DashboardOutlined />,
+  },
+  {
+    key: '/admin/vip/levels',
+    label: 'VIP 等级',
+    icon: <CrownOutlined />,
+  },
+  {
+    key: '/admin/benefit-codes',
+    label: '权益码管理',
+    icon: <GiftOutlined />,
+  },
+  {
+    key: '/admin/system/config',
+    label: '系统配置',
+    icon: <SettingOutlined />,
+  },
+  {
+    key: '/admin/system/announcements',
+    label: '公告管理',
     icon: <NotificationOutlined />,
-    adminOnly: true,
   },
   {
-    key: '/system/audit-logs',
+    key: '/admin/system/audit-logs',
     label: '审计日志',
     icon: <AuditOutlined />,
-    adminOnly: true,
+  },
+  {
+    key: '/admin/profile',
+    label: '个人中心',
+    icon: <UserOutlined />,
   },
 ]
 
@@ -108,7 +148,7 @@ const getSelectedMenuKey = (pathname: string, items: MenuEntry[]): string => {
     .filter((key) => pathname === key || pathname.startsWith(`${key}/`))
     .sort((left, right) => right.length - left.length)
 
-  return matched[0] ?? '/dashboard'
+  return matched[0] ?? items[0]?.key ?? '/user/dashboard'
 }
 
 const formatNotificationTime = (value: string): string => {
@@ -137,7 +177,7 @@ const renderNotificationItem = (item: AppNotification) => (
   </div>
 )
 
-const MainLayout = () => {
+const MainLayout = ({ portal }: MainLayoutProps) => {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -166,26 +206,26 @@ const MainLayout = () => {
     onMessage: handleWebSocketMessage,
   })
 
-  const visibleMenus = useMemo(() => {
-    if (user?.role === 'admin') {
-      return menuEntries
+  const menuEntries = useMemo<MenuEntry[]>(() => {
+    if (portal === 'admin') {
+      return getAdminMenuEntries()
     }
-    return menuEntries.filter((menu) => !menu.adminOnly)
-  }, [user?.role])
+    return getUserMenuEntries()
+  }, [portal])
 
   const selectedKey = useMemo(
-    () => getSelectedMenuKey(location.pathname, visibleMenus),
-    [location.pathname, visibleMenus],
+    () => getSelectedMenuKey(location.pathname, menuEntries),
+    [location.pathname, menuEntries],
   )
 
   const menuItems = useMemo<MenuProps['items']>(
     () =>
-      visibleMenus.map((menu) => ({
+      menuEntries.map((menu) => ({
         key: menu.key,
         icon: menu.icon,
         label: menu.label,
       })),
-    [visibleMenus],
+    [menuEntries],
   )
 
   const notificationMenuItems = useMemo<MenuProps['items']>(() => {
@@ -223,13 +263,19 @@ const MainLayout = () => {
         icon: <UserOutlined />,
       },
       {
+        key: 'switch-portal',
+        label: portal === 'admin' ? '切换到用户端' : '切换到管理端',
+        icon: <SwapOutlined />,
+        disabled: user?.role !== 'admin',
+      },
+      {
         key: 'logout',
         label: '退出登录',
         icon: <LogoutOutlined />,
         danger: true,
       },
     ],
-    [],
+    [portal, user?.role],
   )
 
   const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -240,7 +286,13 @@ const MainLayout = () => {
     }
 
     if (key === 'profile') {
-      navigate('/profile')
+      navigate(buildPortalPath(portal, '/profile'))
+      return
+    }
+
+    if (key === 'switch-portal' && user?.role === 'admin') {
+      const nextPortal: PortalType = portal === 'admin' ? 'user' : 'admin'
+      navigate(buildPortalPath(nextPortal, '/dashboard'))
     }
   }
 
@@ -254,6 +306,9 @@ const MainLayout = () => {
     }
   }
 
+  const portalLabel = portal === 'admin' ? '管理端' : '用户端'
+  const portalTagColor = portal === 'admin' ? 'gold' : 'blue'
+
   return (
     <Layout className="min-h-screen">
       <Layout.Sider
@@ -262,28 +317,42 @@ const MainLayout = () => {
         onCollapse={setSiderCollapsed}
         theme="light"
         width={220}
+        style={{ borderRight: '1px solid #f0f0f0' }}
       >
         <div className="px-4 py-5">
-          <Typography.Title level={5} style={{ marginBottom: 0 }}>
-            {siderCollapsed ? 'NP' : 'NodePass Panel'}
-          </Typography.Title>
+          <Space direction="vertical" size={4}>
+            <Typography.Title level={5} style={{ marginBottom: 0 }}>
+              {siderCollapsed ? 'NP' : 'NodePass Panel'}
+            </Typography.Title>
+            {!siderCollapsed ? (
+              <Tag color={portalTagColor} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
+                {portalLabel}
+              </Tag>
+            ) : null}
+          </Space>
         </div>
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
           onClick={handleMenuClick}
+          style={{ borderInlineEnd: 'none' }}
         />
       </Layout.Sider>
 
       <Layout>
         <Layout.Header
           className="flex items-center justify-between px-6"
-          style={{ backgroundColor: '#fff' }}
+          style={{ backgroundColor: '#fff', borderBottom: '1px solid #f0f0f0' }}
         >
-          <Typography.Text type="secondary">
-            欢迎回来，{user?.username ?? '用户'}
-          </Typography.Text>
+          <Space>
+            <Tag color={portalTagColor} style={{ marginInlineEnd: 0 }}>
+              {portalLabel}
+            </Tag>
+            <Typography.Text type="secondary">
+              欢迎回来，{user?.username ?? '用户'}
+            </Typography.Text>
+          </Space>
 
           <Space size={16}>
             <Space size={8}>
