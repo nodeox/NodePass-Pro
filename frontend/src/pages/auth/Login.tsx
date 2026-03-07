@@ -75,6 +75,7 @@ const Login = () => {
       return
     }
 
+    const widgetContainer = widgetContainerRef.current
     const callbackName = `onTelegramAuth_${Date.now()}`
     const handleTelegramAuth = async (telegramUser: TelegramWidgetUser) => {
       try {
@@ -105,13 +106,11 @@ const Login = () => {
     script.setAttribute('data-request-access', 'write')
     script.setAttribute('data-onauth', `${callbackName}(user)`)
 
-    widgetContainerRef.current.innerHTML = ''
-    widgetContainerRef.current.appendChild(script)
+    widgetContainer.replaceChildren()
+    widgetContainer.appendChild(script)
 
     return () => {
-      if (widgetContainerRef.current) {
-        widgetContainerRef.current.innerHTML = ''
-      }
+      widgetContainer.replaceChildren()
       delete window[callbackName]
     }
   }, [navigate, telegramBotUsername])

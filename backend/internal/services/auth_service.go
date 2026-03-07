@@ -13,10 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	minPasswordLength = 6
-)
-
 // AuthService 认证服务。
 type AuthService struct {
 	db         *gorm.DB

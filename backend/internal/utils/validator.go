@@ -12,6 +12,11 @@ var (
 	domainRegex = regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`)
 	// 邮箱正则表达式
 	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	// 密码强度正则表达式
+	passwordLowerRegex   = regexp.MustCompile(`[a-z]`)
+	passwordUpperRegex   = regexp.MustCompile(`[A-Z]`)
+	passwordDigitRegex   = regexp.MustCompile(`[0-9]`)
+	passwordSpecialRegex = regexp.MustCompile(`[^a-zA-Z0-9]`)
 )
 
 // ValidatePort 验证端口号是否有效（1-65535）。
@@ -105,13 +110,25 @@ func ValidateUsername(username string) error {
 }
 
 // ValidatePassword 验证密码强度。
-// 密码规则：至少 6 个字符。
+// 密码规则：8-128 位，且至少包含大写字母、小写字母、数字、特殊字符。
 func ValidatePassword(password string) error {
-	if len(password) < 6 {
-		return fmt.Errorf("密码长度不能少于 6 个字符")
+	if len(password) < 8 {
+		return fmt.Errorf("密码长度不能少于 8 个字符")
 	}
 	if len(password) > 128 {
 		return fmt.Errorf("密码长度不能超过 128 个字符")
+	}
+	if !passwordLowerRegex.MatchString(password) {
+		return fmt.Errorf("密码必须包含至少一个小写字母")
+	}
+	if !passwordUpperRegex.MatchString(password) {
+		return fmt.Errorf("密码必须包含至少一个大写字母")
+	}
+	if !passwordDigitRegex.MatchString(password) {
+		return fmt.Errorf("密码必须包含至少一个数字")
+	}
+	if !passwordSpecialRegex.MatchString(password) {
+		return fmt.Errorf("密码必须包含至少一个特殊字符")
 	}
 	return nil
 }

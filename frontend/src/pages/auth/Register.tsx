@@ -79,6 +79,22 @@ const Register = () => {
             rules={[
               { required: true, message: '请输入密码' },
               { min: 8, message: '密码至少 8 位' },
+              {
+                pattern: /[a-z]/,
+                message: '密码必须包含至少一个小写字母',
+              },
+              {
+                pattern: /[A-Z]/,
+                message: '密码必须包含至少一个大写字母',
+              },
+              {
+                pattern: /\d/,
+                message: '密码必须包含至少一个数字',
+              },
+              {
+                pattern: /[^a-zA-Z0-9]/,
+                message: '密码必须包含至少一个特殊字符',
+              },
             ]}
           >
             <Input.Password placeholder="请输入密码" />

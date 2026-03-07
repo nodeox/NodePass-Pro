@@ -28,6 +28,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const insecureJWTSecretPlaceholder = "change-this-secret-in-production"
+
 func main() {
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
@@ -42,6 +44,10 @@ func main() {
 		_ = logger.Sync()
 	}()
 	zap.ReplaceGlobals(logger)
+
+	if err = validateSecurityConfig(cfg); err != nil {
+		zap.L().Fatal("关键安全配置校验失败", zap.Error(err))
+	}
 
 	gin.SetMode(cfg.Server.Mode)
 
@@ -125,6 +131,21 @@ func initLogger(mode string) (*zap.Logger, error) {
 	return zap.NewDevelopment()
 }
 
+func validateSecurityConfig(cfg *config.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("配置为空")
+	}
+
+	secret := strings.TrimSpace(cfg.JWT.Secret)
+	if secret == "" {
+		return fmt.Errorf("JWT Secret 未配置，请设置 configs/config.yaml 的 jwt.secret 或 NODEPASS_JWT_SECRET")
+	}
+	if secret == insecureJWTSecretPlaceholder {
+		return fmt.Errorf("检测到默认 JWT Secret，请修改后再启动")
+	}
+	return nil
+}
+
 func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -196,9 +217,9 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	}
 
 	api.POST("/auth/register", authHandler.Register)
-	api.POST("/auth/login", authHandler.Login)
+	api.POST("/auth/login", middleware.RateLimit(0.2, 5), authHandler.Login)
 	api.POST("/telegram/webhook", telegramHandler.Webhook)
-	api.POST("/telegram/login", telegramHandler.Login)
+	api.POST("/telegram/login", middleware.RateLimit(0.5, 5), telegramHandler.Login)
 
 	agentNodes := api.Group("/nodes")
 	{
