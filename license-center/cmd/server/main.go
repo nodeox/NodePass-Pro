@@ -40,6 +40,27 @@ func main() {
 	authService := services.NewAuthService(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
 	licenseService := services.NewLicenseService(db)
 
+	if affected, expireErr := licenseService.ExpireOverdueLicenses(); expireErr != nil {
+		log.Printf("启动时过期清理失败: %v", expireErr)
+	} else if affected > 0 {
+		log.Printf("启动时已标记过期授权: %d", affected)
+	}
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			affected, expireErr := licenseService.ExpireOverdueLicenses()
+			if expireErr != nil {
+				log.Printf("定时过期清理失败: %v", expireErr)
+				continue
+			}
+			if affected > 0 {
+				log.Printf("定时标记过期授权: %d", affected)
+			}
+		}
+	}()
+
 	authHandler := handlers.NewAuthHandler(authService)
 	licenseHandler := handlers.NewLicenseHandler(licenseService)
 

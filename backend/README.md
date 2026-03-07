@@ -13,6 +13,27 @@ NodePass Pro 后端基于 Go + Gin + Gorm，提供节点、规则、流量、VIP
 - 默认数据库：PostgreSQL
 - 可切换：SQLite / MySQL / PostgreSQL（通过 `database.type` 与 `database.dsn`）
 
+## 运行时授权校验
+
+可在配置文件中启用运行时授权校验：
+
+```yaml
+license:
+  enabled: true
+  verify_url: "https://license.nodepass.pro/api/v1/license/verify"
+  license_key: "NP-XXXX-XXXX-XXXX"
+  machine_id: ""
+  verify_interval: 300
+  fail_open: false
+  offline_grace_seconds: 600
+```
+
+说明：
+
+- 校验失败或授权过期后，业务 API 会被拒绝；
+- 仍保留健康检查接口：`/health` 与 `/api/v1/license/status`；
+- 使用部署脚本时会自动注入授权相关环境变量。
+
 ## 数据库切换示例
 
 - PostgreSQL（默认）

@@ -30,3 +30,12 @@ telegram:
   bot_token: ""
   bot_username: ""
   webhook_url: ""
+
+license:
+  enabled: false
+  verify_url: "https://license.nodepass.pro/api/v1/license/verify"
+  license_key: ""
+  machine_id: ""
+  verify_interval: 300
+  fail_open: false
+  offline_grace_seconds: 600

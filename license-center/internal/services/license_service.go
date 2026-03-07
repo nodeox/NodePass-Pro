@@ -132,13 +132,20 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 		return &VerifyResult{Valid: false, Message: "授权码不存在"}, nil
 	}
 
+	effectiveExpireAt, isExpired, err := s.resolveAndPersistExpireAt(&license)
+	if err != nil {
+		_ = s.logVerify(&license, req, ip, ua, "failed", err.Error())
+		return &VerifyResult{Valid: false, Message: err.Error()}, nil
+	}
+	if isExpired {
+		_ = s.markLicenseExpired(&license)
+		_ = s.logVerify(&license, req, ip, ua, "failed", "授权码已过期")
+		return &VerifyResult{Valid: false, Message: "授权码已过期"}, nil
+	}
+
 	if license.Status != "active" {
 		_ = s.logVerify(&license, req, ip, ua, "failed", "授权码状态不可用")
 		return &VerifyResult{Valid: false, Message: "授权码状态不可用"}, nil
-	}
-	if license.ExpiresAt != nil && license.ExpiresAt.Before(time.Now().UTC()) {
-		_ = s.logVerify(&license, req, ip, ua, "failed", "授权码已过期")
-		return &VerifyResult{Valid: false, Message: "授权码已过期"}, nil
 	}
 	if !license.Plan.IsEnabled {
 		_ = s.logVerify(&license, req, ip, ua, "failed", "套餐已禁用")
@@ -163,7 +170,7 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 		LicenseID:     license.ID,
 		Plan:          license.Plan.Code,
 		Customer:      license.Customer,
-		ExpiresAt:     license.ExpiresAt,
+		ExpiresAt:     effectiveExpireAt,
 		VersionPolicy: policy,
 	}, nil
 }
@@ -247,6 +254,50 @@ func planToVersionPolicy(plan models.LicensePlan) VersionPolicy {
 	}
 }
 
+func (s *LicenseService) resolveAndPersistExpireAt(license *models.LicenseKey) (*time.Time, bool, error) {
+	if license == nil {
+		return nil, false, fmt.Errorf("授权码不存在")
+	}
+
+	now := time.Now().UTC()
+	if license.ExpiresAt != nil {
+		exp := license.ExpiresAt.UTC()
+		return &exp, !exp.After(now), nil
+	}
+
+	if license.Plan.DurationDays <= 0 {
+		return nil, false, fmt.Errorf("授权码未设置过期时间且套餐有效期无效")
+	}
+
+	calculated := license.CreatedAt.UTC().AddDate(0, 0, license.Plan.DurationDays)
+	if err := s.db.Model(&models.LicenseKey{}).
+		Where("id = ? AND expires_at IS NULL", license.ID).
+		Update("expires_at", calculated).Error; err != nil {
+		return nil, false, fmt.Errorf("写入授权过期时间失败")
+	}
+	license.ExpiresAt = &calculated
+	return &calculated, !calculated.After(now), nil
+}
+
+func (s *LicenseService) markLicenseExpired(license *models.LicenseKey) error {
+	if license == nil || license.ID == 0 {
+		return nil
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.LicenseKey{}).
+			Where("id = ? AND status <> ?", license.ID, "expired").
+			Update("status", "expired").Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.LicenseActivation{}).
+			Where("license_id = ? AND is_active = ?", license.ID, true).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (s *LicenseService) logVerify(license *models.LicenseKey, req *VerifyRequest, ip, ua, result, reason string) error {
 	logRecord := &models.VerifyLog{
 		LicenseKey:        strings.TrimSpace(req.LicenseKey),
@@ -323,6 +374,12 @@ func (s *LicenseService) UpdatePlan(id uint, req *CreatePlanRequest) (*models.Li
 	if err := s.db.First(&plan, id).Error; err != nil {
 		return nil, err
 	}
+	if req.MaxMachines <= 0 {
+		req.MaxMachines = plan.MaxMachines
+	}
+	if req.DurationDays <= 0 {
+		req.DurationDays = plan.DurationDays
+	}
 
 	updates := map[string]interface{}{
 		"name":                   strings.TrimSpace(req.Name),
@@ -386,15 +443,28 @@ func (s *LicenseService) GenerateLicenses(req *GenerateLicenseRequest) ([]models
 	if err := s.db.First(&plan, req.PlanID).Error; err != nil {
 		return nil, fmt.Errorf("套餐不存在")
 	}
+	if plan.DurationDays <= 0 && req.ExpiresAt == nil {
+		return nil, fmt.Errorf("套餐有效期无效，无法生成授权码")
+	}
 
 	items := make([]models.LicenseKey, 0, req.Count)
+	now := time.Now().UTC()
 	for i := 0; i < req.Count; i++ {
+		expiresAt := req.ExpiresAt
+		if expiresAt == nil {
+			calculated := now.AddDate(0, 0, plan.DurationDays)
+			expiresAt = &calculated
+		}
+		if expiresAt != nil && !expiresAt.After(now) {
+			return nil, fmt.Errorf("过期时间必须晚于当前时间")
+		}
+
 		license := models.LicenseKey{
 			Key:         utils.GenerateLicenseKey(req.Prefix),
 			PlanID:      req.PlanID,
 			Customer:    strings.TrimSpace(req.Customer),
 			Status:      "active",
-			ExpiresAt:   req.ExpiresAt,
+			ExpiresAt:   expiresAt,
 			MaxMachines: req.MaxMachines,
 			Note:        req.Note,
 			CreatedBy:   req.CreatedBy,
@@ -548,6 +618,39 @@ func (s *LicenseService) ListVerifyLogs(page, pageSize int) (*PaginatedResult[mo
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+// ExpireOverdueLicenses 定时将过期授权码标记为 expired 并解绑机器。
+func (s *LicenseService) ExpireOverdueLicenses() (int64, error) {
+	now := time.Now().UTC()
+	ids := make([]uint, 0)
+	if err := s.db.Model(&models.LicenseKey{}).
+		Where("status = ? AND expires_at IS NOT NULL AND expires_at <= ?", "active", now).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	var affected int64
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&models.LicenseKey{}).
+			Where("id IN ?", ids).
+			Update("status", "expired")
+		if result.Error != nil {
+			return result.Error
+		}
+		affected = result.RowsAffected
+
+		if err := tx.Model(&models.LicenseActivation{}).
+			Where("license_id IN ? AND is_active = ?", ids, true).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	return affected, err
 }
 
 // Stats 查询统计数据。

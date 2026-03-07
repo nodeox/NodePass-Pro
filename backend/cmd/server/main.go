@@ -15,6 +15,7 @@ import (
 	"nodepass-panel/backend/internal/config"
 	"nodepass-panel/backend/internal/database"
 	"nodepass-panel/backend/internal/handlers"
+	"nodepass-panel/backend/internal/license"
 	"nodepass-panel/backend/internal/middleware"
 	"nodepass-panel/backend/internal/models"
 	"nodepass-panel/backend/internal/services"
@@ -44,6 +45,19 @@ func main() {
 
 	gin.SetMode(cfg.Server.Mode)
 
+	licenseManager := license.NewManager(&cfg.License)
+	licenseCtx, stopLicenseCheck := context.WithCancel(context.Background())
+	defer stopLicenseCheck()
+	licenseManager.Start(licenseCtx)
+	if licenseManager.Enabled() {
+		licenseStatus := licenseManager.Status()
+		if licenseStatus.Valid {
+			zap.L().Info("运行时授权校验已启用", zap.String("message", licenseStatus.Message))
+		} else {
+			zap.L().Warn("运行时授权校验未通过，业务请求将被拦截", zap.String("message", licenseStatus.Message))
+		}
+	}
+
 	if err = cache.Init(&cfg.Redis); err != nil {
 		zap.L().Fatal("Redis 初始化失败", zap.Error(err))
 	}
@@ -62,7 +76,7 @@ func main() {
 		}
 	}()
 
-	router, wsHub := setupRouter()
+	router, wsHub := setupRouter(licenseManager)
 	taskScheduler, err := startCronTasks(wsHub)
 	if err != nil {
 		zap.L().Fatal("定时任务注册失败", zap.Error(err))
@@ -111,7 +125,7 @@ func initLogger(mode string) (*zap.Logger, error) {
 	return zap.NewDevelopment()
 }
 
-func setupRouter() (*gin.Engine, *panelws.Hub) {
+func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
@@ -120,12 +134,38 @@ func setupRouter() (*gin.Engine, *panelws.Hub) {
 	r.Use(middleware.RateLimit(50, 100))
 
 	r.GET("/health", func(c *gin.Context) {
-		utils.Success(c, gin.H{"status": "ok", "version": version.Version})
+		licenseStatus := gin.H{
+			"enabled": false,
+			"valid":   true,
+		}
+		if licenseManager != nil {
+			status := licenseManager.Status()
+			licenseStatus = gin.H{
+				"enabled":         status.Enabled,
+				"valid":           status.Valid,
+				"message":         status.Message,
+				"last_checked_at": status.LastCheckedAt,
+				"expires_at":      status.ExpiresAt,
+			}
+		}
+		utils.Success(c, gin.H{"status": "ok", "version": version.Version, "license": licenseStatus})
 	})
 
 	api := r.Group("/api/v1")
+	api.Use(middleware.LicenseGuard(licenseManager))
 	api.GET("/ping", func(c *gin.Context) {
 		utils.Success(c, gin.H{"message": "pong", "version": version.Version})
+	})
+	api.GET("/license/status", func(c *gin.Context) {
+		if licenseManager == nil {
+			utils.Success(c, gin.H{
+				"enabled": false,
+				"valid":   true,
+				"message": "license manager not initialized",
+			})
+			return
+		}
+		utils.Success(c, licenseManager.Status())
 	})
 
 	nodeHandler := handlers.NewNodeHandler(database.DB)

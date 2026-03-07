@@ -14,6 +14,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Telegram TelegramConfig `mapstructure:"telegram"`
+	License  LicenseConfig  `mapstructure:"license"`
 }
 
 // ServerConfig 服务配置。
@@ -55,6 +56,17 @@ type TelegramConfig struct {
 	BotToken    string `mapstructure:"bot_token"`
 	BotUsername string `mapstructure:"bot_username"`
 	WebhookURL  string `mapstructure:"webhook_url"`
+}
+
+// LicenseConfig 运行时授权配置。
+type LicenseConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	VerifyURL             string `mapstructure:"verify_url"`
+	LicenseKey            string `mapstructure:"license_key"`
+	MachineID             string `mapstructure:"machine_id"`
+	VerifyIntervalSeconds int    `mapstructure:"verify_interval"`
+	FailOpen              bool   `mapstructure:"fail_open"`
+	OfflineGraceSeconds   int    `mapstructure:"offline_grace_seconds"`
 }
 
 // GlobalConfig 全局配置缓存。
@@ -101,6 +113,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 	if cfg.JWT.ExpireTime <= 0 {
 		cfg.JWT.ExpireTime = 24
+	}
+	if cfg.License.VerifyIntervalSeconds <= 0 {
+		cfg.License.VerifyIntervalSeconds = 300
+	}
+	if cfg.License.OfflineGraceSeconds <= 0 {
+		cfg.License.OfflineGraceSeconds = 600
 	}
 
 	GlobalConfig = cfg

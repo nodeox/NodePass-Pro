@@ -39,7 +39,7 @@ docker compose up -d --build
 可直接使用远程引导脚本（风格与 `bash <(curl -sL xxx/install.sh)` 一致）：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --license-key NP-XXXX-XXXX
+bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh)
 ```
 
 版本查看：
@@ -123,6 +123,7 @@ cd NodePass-Pro
 - 可使用 `./scripts/version.sh show` 查看版本，`./scripts/version.sh set ...` 更新版本；
 - 授权验证脚本：`scripts/license-verify.py`（会按版本策略校验 panel/backend/frontend/nodeclient）；
 - `install.sh` 与 `scripts/deploy.sh` 在非 `--down` 模式下都会强制授权校验；
+- 后端运行时会持续校验授权，授权过期/失效后业务 API 会被拒绝（保留 `/health` 与 `/api/v1/license/status`）；
 - 启用 Caddy 时会自动生成配置文件：`deploy/caddy/Caddyfile`；
 - Caddy 默认将前端域名的 `/api/*`、`/ws` 反代到后端，其余路径反代到前端；
 - Caddy 同时暴露节点安装入口：`/nodeclient-install.sh` 与 `/downloads/*`；
