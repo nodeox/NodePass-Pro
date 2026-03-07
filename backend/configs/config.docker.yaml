@@ -1,0 +1,32 @@
+server:
+  port: "8080"
+  mode: "release"
+  allowed_origins:
+    - "localhost"
+    - "127.0.0.1"
+
+database:
+  type: "postgres"
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  db_name: "nodepass_panel"
+  dsn: "host=postgres port=5432 user=postgres password=postgres dbname=nodepass_panel sslmode=disable TimeZone=Asia/Shanghai"
+
+redis:
+  enabled: true
+  addr: "redis:6379"
+  password: ""
+  db: 0
+  key_prefix: "nodepass:panel"
+  default_ttl: 300
+
+jwt:
+  secret: "change-this-secret-in-production"
+  expire_time: 168
+
+telegram:
+  bot_token: ""
+  bot_username: ""
+  webhook_url: ""

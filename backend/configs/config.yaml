@@ -1,0 +1,32 @@
+server:
+  port: "8080"
+  mode: "debug" # debug / release
+  allowed_origins:
+    - "localhost"
+    - "127.0.0.1"
+
+database:
+  type: "postgres" # sqlite / mysql / postgres
+  host: "127.0.0.1"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  db_name: "nodepass_panel"
+  dsn: "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=nodepass_panel sslmode=disable TimeZone=Asia/Shanghai" # PostgreSQL 示例；可留空并使用上面的 host/port/user/password/db_name 组合
+
+redis:
+  enabled: true
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  key_prefix: "nodepass:panel"
+  default_ttl: 300 # 秒
+
+jwt:
+  secret: "change-this-secret-in-production"
+  expire_time: 168 # 小时
+
+telegram:
+  bot_token: ""
+  bot_username: ""
+  webhook_url: ""

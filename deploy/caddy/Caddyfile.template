@@ -1,0 +1,21 @@
+{
+__EMAIL_BLOCK__
+}
+
+__DOMAIN__ {
+    encode zstd gzip
+
+    @api path /api/* /ws*
+    handle @api {
+        reverse_proxy backend:8080
+    }
+
+    handle {
+        reverse_proxy frontend:80
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

@@ -1,0 +1,7 @@
+hub_url: "https://your-panel.com"
+node_token: "node_abc123xyz"
+cache_path: "/var/lib/nodeclient/config.json"
+log_path: "/var/log/nodeclient/"
+heartbeat_interval: 30
+config_check_interval: 60
+traffic_report_interval: 60
