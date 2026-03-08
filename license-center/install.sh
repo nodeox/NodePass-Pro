@@ -232,6 +232,26 @@ ensure_file_readable() {
   fi
 }
 
+ensure_dir_traversable() {
+  local dir="$1"
+  if [[ -d "$dir" ]]; then
+    # 目录需要 x 权限才可遍历访问文件。
+    run_root chmod 755 "$dir" || true
+  fi
+}
+
+ensure_config_mount_permissions() {
+  local config_file="$1"
+  local config_dir project_dir
+
+  config_dir="$(dirname "$config_file")"
+  project_dir="$(dirname "$config_dir")"
+
+  ensure_dir_traversable "$project_dir"
+  ensure_dir_traversable "$config_dir"
+  ensure_file_readable "$config_file"
+}
+
 ensure_secure_config() {
   local config_file="$1"
 
@@ -260,7 +280,7 @@ ensure_secure_config() {
     log_warn "检测到 admin.password 缺失或强度不足，已自动生成强密码。"
   fi
 
-  ensure_file_readable "$config_file"
+  ensure_config_mount_permissions "$config_file"
 }
 
 install_packages() {
@@ -530,6 +550,9 @@ prepare_config_only() {
   run_root mkdir -p "$project_dir"
   run_root mkdir -p "${project_dir}/configs"
   run_root mkdir -p "${project_dir}/scripts"
+  ensure_dir_traversable "$project_dir"
+  ensure_dir_traversable "${project_dir}/configs"
+  ensure_dir_traversable "${project_dir}/scripts"
 
   # 下载 docker-compose.prod.yml
   log_info "下载 docker-compose 配置..."
@@ -552,7 +575,7 @@ prepare_config_only() {
       run_root wget -q "$config_url" -O "${project_dir}/configs/config.yaml"
     fi
   fi
-  ensure_file_readable "${project_dir}/configs/config.yaml"
+  ensure_config_mount_permissions "${project_dir}/configs/config.yaml"
 
   # 下载部署脚本（镜像模式仍需通过 deploy.sh 统一执行 up/down/logs）
   log_info "下载部署脚本..."
@@ -666,7 +689,7 @@ restore_config() {
   local target="${project_dir}/configs/config.yaml"
   run_root mkdir -p "$(dirname "$target")"
   run_root cp "$LAST_CONFIG_BACKUP" "$target"
-  ensure_file_readable "$target"
+  ensure_config_mount_permissions "$target"
   log_info "已恢复用户配置: $target"
 }
 
