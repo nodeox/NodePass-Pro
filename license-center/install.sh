@@ -224,6 +224,14 @@ update_yaml_value() {
   run_root mv "$tmp_file" "$file"
 }
 
+ensure_file_readable() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    # 容器内进程默认非 root，绑定挂载配置必须至少全局可读。
+    run_root chmod 644 "$file" || true
+  fi
+}
+
 ensure_secure_config() {
   local config_file="$1"
 
@@ -251,6 +259,8 @@ ensure_secure_config() {
     GENERATED_CONFIG_WARNING=true
     log_warn "检测到 admin.password 缺失或强度不足，已自动生成强密码。"
   fi
+
+  ensure_file_readable "$config_file"
 }
 
 install_packages() {
@@ -542,6 +552,7 @@ prepare_config_only() {
       run_root wget -q "$config_url" -O "${project_dir}/configs/config.yaml"
     fi
   fi
+  ensure_file_readable "${project_dir}/configs/config.yaml"
 
   # 下载部署脚本（镜像模式仍需通过 deploy.sh 统一执行 up/down/logs）
   log_info "下载部署脚本..."
@@ -655,6 +666,7 @@ restore_config() {
   local target="${project_dir}/configs/config.yaml"
   run_root mkdir -p "$(dirname "$target")"
   run_root cp "$LAST_CONFIG_BACKUP" "$target"
+  ensure_file_readable "$target"
   log_info "已恢复用户配置: $target"
 }
 
