@@ -1323,15 +1323,23 @@ check_service_health() {
 
 show_success_info() {
   local app_port="$1"
+  local host_ip=""
   local health_url="http://127.0.0.1:${app_port}/health"
   local console_url="http://127.0.0.1:${app_port}/console"
   local api_url="http://127.0.0.1:${app_port}/api/v1"
+  local verify_url="http://127.0.0.1:${app_port}/api/v1/license/verify"
+  local verify_url_lan=""
   local compose_cmd="docker compose -f ${INSTALL_DIR}/${PROJECT_SUBDIR}/docker-compose.yml"
+
+  host_ip="$(detect_host_ip)"
 
   if [[ "$CADDY_ENABLED" == true && -n "$CADDY_DOMAIN" ]]; then
     console_url="https://${CADDY_DOMAIN}/console"
     api_url="https://${CADDY_DOMAIN}/api/v1"
+    verify_url="https://${CADDY_DOMAIN}/api/v1/license/verify"
     compose_cmd="${compose_cmd} -f ${INSTALL_DIR}/${PROJECT_SUBDIR}/docker-compose.https.yml"
+  elif [[ -n "$host_ip" ]]; then
+    verify_url_lan="http://${host_ip}:${app_port}/api/v1/license/verify"
   fi
 
   cat <<EOF
@@ -1351,6 +1359,21 @@ ${BLUE}🔐 管理员账号:${NC}
   • 用户名: ${ADMIN_USERNAME}
   • 邮箱: ${ADMIN_EMAIL}
   • 密码: ${ADMIN_PASSWORD}
+
+${BLUE}🔗 后端对接地址:${NC}
+  • LICENSE_VERIFY_URL: ${verify_url}
+EOF
+
+  if [[ -n "$verify_url_lan" ]]; then
+    cat <<EOF
+  • 服务器 IP 对接地址: ${verify_url_lan}
+EOF
+  fi
+
+  cat <<EOF
+  • 建议后端配置:
+    LICENSE_VERIFY_URL=${verify_url}
+    BACKEND_LICENSE_ENABLED=true
 
 ${BLUE}📚 功能特性:${NC}
   • ✅ 授权码管理（生成、吊销、转移）
