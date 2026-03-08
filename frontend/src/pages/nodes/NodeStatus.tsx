@@ -67,7 +67,13 @@ const NodeStatus = () => {
     }
     try {
       const result = await nodeGroupApi.accessibleNodes()
-      setSource(result.items ?? [])
+      const rawItems = Array.isArray(result?.items) ? result.items : []
+      setSource(
+        rawItems.map((item) => ({
+          ...item,
+          nodes: Array.isArray(item?.nodes) ? item.nodes : [],
+        })),
+      )
     } catch (error) {
       message.error(getErrorMessage(error, '节点状态加载失败'))
     } finally {
@@ -91,6 +97,9 @@ const NodeStatus = () => {
     const merged: NodeStatusRow[] = []
 
     source.forEach((item) => {
+      if (!item?.group) {
+        return
+      }
       if (filter === 'own' && item.is_public) {
         return
       }
@@ -98,7 +107,8 @@ const NodeStatus = () => {
         return
       }
 
-      item.nodes.forEach((node) => {
+      const nodes = Array.isArray(item.nodes) ? item.nodes : []
+      nodes.forEach((node) => {
         merged.push({
           ...node,
           group_id: item.group.id,
@@ -120,8 +130,8 @@ const NodeStatus = () => {
     return {
       ownGroups: ownGroups.length,
       publicGroups: publicGroups.length,
-      ownNodes: ownGroups.reduce((acc, item) => acc + item.nodes.length, 0),
-      publicNodes: publicGroups.reduce((acc, item) => acc + item.nodes.length, 0),
+      ownNodes: ownGroups.reduce((acc, item) => acc + (Array.isArray(item.nodes) ? item.nodes.length : 0), 0),
+      publicNodes: publicGroups.reduce((acc, item) => acc + (Array.isArray(item.nodes) ? item.nodes.length : 0), 0),
     }
   }, [source])
 

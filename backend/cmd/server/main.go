@@ -223,6 +223,11 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", middleware.RateLimit(0.2, 5), authHandler.Login)
 
+	// V2 认证接口 - 支持 refresh token
+	api.POST("/auth/login/v2", middleware.RateLimit(0.2, 5), authHandler.LoginV2)
+	api.POST("/auth/refresh/v2", middleware.RateLimit(1, 10), authHandler.RefreshTokenV2)
+	api.POST("/auth/logout", authHandler.Logout)
+
 	// Telegram webhook - 严格的请求体限制（64KB）和签名验证
 	api.POST("/telegram/webhook",
 		middleware.RequestBodyLimit(64*1024), // 64KB
@@ -246,6 +251,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			auth.GET("/me", authHandler.Me)
 			auth.POST("/refresh", authHandler.Refresh)
 			auth.PUT("/password", authHandler.ChangePassword)
+			auth.POST("/revoke-all", authHandler.RevokeAllTokens) // 撤销所有 tokens
 		}
 
 		nodeGroups := authGroup.Group("/node-groups")

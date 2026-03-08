@@ -108,6 +108,7 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.User{},
 		&models.UserPermission{},
+		&models.RefreshToken{},
 		&models.NodeGroup{},
 		&models.NodeInstance{},
 		&models.NodeGroupRelation{},

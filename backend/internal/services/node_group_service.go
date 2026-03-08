@@ -310,9 +310,13 @@ func (s *NodeGroupService) ListAccessibleNodeGroups(userID uint) ([]AccessibleNo
 	result := make([]AccessibleNodeGroup, 0, len(groups))
 	for _, group := range groups {
 		editable := group.UserID == userID
+		nodes := nodesByGroup[group.ID]
+		if nodes == nil {
+			nodes = make([]models.NodeInstance, 0)
+		}
 		result = append(result, AccessibleNodeGroup{
 			Group:    group,
-			Nodes:    nodesByGroup[group.ID],
+			Nodes:    nodes,
 			Editable: editable,
 			IsPublic: !editable,
 		})

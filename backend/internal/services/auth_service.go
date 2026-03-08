@@ -15,8 +15,9 @@ import (
 
 // AuthService 认证服务。
 type AuthService struct {
-	db         *gorm.DB
-	vipService *VIPService
+	db                  *gorm.DB
+	vipService          *VIPService
+	refreshTokenService *RefreshTokenService
 }
 
 // RegisterRequest 注册请求。
@@ -34,15 +35,19 @@ type LoginRequest struct {
 
 // LoginResult 登录结果。
 type LoginResult struct {
-	Token string       `json:"token"`
-	User  *models.User `json:"user"`
+	AccessToken  string       `json:"access_token"`  // 访问令牌（短期，30分钟）
+	RefreshToken string       `json:"refresh_token"` // 刷新令牌（长期，7天）
+	ExpiresIn    int          `json:"expires_in"`    // 访问令牌过期时间（秒）
+	TokenType    string       `json:"token_type"`    // 令牌类型（Bearer）
+	User         *models.User `json:"user"`
 }
 
 // NewAuthService 创建认证服务。
 func NewAuthService(db *gorm.DB) *AuthService {
 	return &AuthService{
-		db:         db,
-		vipService: NewVIPService(db),
+		db:                  db,
+		vipService:          NewVIPService(db),
+		refreshTokenService: NewRefreshTokenService(db),
 	}
 }
 
@@ -155,8 +160,11 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResult, error) {
 	user.LastLoginAt = &now
 
 	return &LoginResult{
-		Token: token,
-		User:  &user,
+		AccessToken: token,
+		RefreshToken: "", // 旧接口不返回 refresh token
+		ExpiresIn:    3600, // 1 小时
+		TokenType:    "Bearer",
+		User:         &user,
 	}, nil
 }
 

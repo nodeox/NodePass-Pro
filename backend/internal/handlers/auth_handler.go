@@ -125,3 +125,90 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	utils.SuccessResponse(c, nil, "密码修改成功")
 }
+
+// LoginV2 POST /api/v1/auth/login/v2
+// 新版登录接口，返回 access token 和 refresh token
+func (h *AuthHandler) LoginV2(c *gin.Context) {
+	var req services.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+
+	result, err := h.authService.LoginWithRefreshToken(&req, ipAddress, userAgent)
+	if err != nil {
+		writeServiceError(c, err, "LOGIN_FAILED")
+		return
+	}
+
+	utils.SuccessResponse(c, result, "登录成功")
+}
+
+// RefreshToken POST /api/v1/auth/refresh/v2
+// 使用 refresh token 刷新 access token
+func (h *AuthHandler) RefreshTokenV2(c *gin.Context) {
+	type requestPayload struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+
+	result, err := h.authService.RefreshAccessToken(req.RefreshToken, ipAddress, userAgent)
+	if err != nil {
+		writeServiceError(c, err, "REFRESH_TOKEN_FAILED")
+		return
+	}
+
+	utils.SuccessResponse(c, result, "刷新成功")
+}
+
+// Logout POST /api/v1/auth/logout
+// 登出（撤销 refresh token）
+func (h *AuthHandler) Logout(c *gin.Context) {
+	type requestPayload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 如果没有提供 refresh token，也算登出成功
+		utils.SuccessResponse(c, nil, "登出成功")
+		return
+	}
+
+	if req.RefreshToken != "" {
+		if err := h.authService.RevokeRefreshToken(req.RefreshToken); err != nil {
+			// 撤销失败也不影响登出
+			utils.SuccessResponse(c, nil, "登出成功")
+			return
+		}
+	}
+
+	utils.SuccessResponse(c, nil, "登出成功")
+}
+
+// RevokeAllTokens POST /api/v1/auth/revoke-all
+// 撤销当前用户的所有 refresh tokens
+func (h *AuthHandler) RevokeAllTokens(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	if err := h.authService.RevokeAllUserTokens(userID); err != nil {
+		writeServiceError(c, err, "REVOKE_TOKENS_FAILED")
+		return
+	}
+
+	utils.SuccessResponse(c, nil, "已撤销所有登录会话")
+}
+
