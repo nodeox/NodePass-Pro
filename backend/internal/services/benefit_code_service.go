@@ -265,6 +265,34 @@ func (s *BenefitCodeService) BatchDelete(adminID uint, ids []uint) (int64, error
 	return result.RowsAffected, nil
 }
 
+// validateCode 校验权益码状态（供同包测试与复用逻辑使用）。
+func (s *BenefitCodeService) validateCode(code string) (*models.BenefitCode, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return nil, fmt.Errorf("%w: code 不能为空", ErrInvalidParams)
+	}
+
+	var benefitCode models.BenefitCode
+	if err := s.db.Where("code = ?", code).First(&benefitCode).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: 权益码不存在", ErrNotFound)
+		}
+		return nil, fmt.Errorf("查询权益码失败: %w", err)
+	}
+
+	if !benefitCode.IsEnabled {
+		return nil, fmt.Errorf("%w: 权益码已禁用", ErrForbidden)
+	}
+	if !strings.EqualFold(strings.TrimSpace(benefitCode.Status), "unused") {
+		return nil, fmt.Errorf("%w: 权益码已使用", ErrConflict)
+	}
+	now := time.Now()
+	if benefitCode.ExpiresAt != nil && benefitCode.ExpiresAt.Before(now) {
+		return nil, fmt.Errorf("%w: 权益码已过期", ErrForbidden)
+	}
+	return &benefitCode, nil
+}
+
 func generateBenefitCode() (string, error) {
 	raw := make([]byte, 12)
 	if _, err := rand.Read(raw); err != nil {

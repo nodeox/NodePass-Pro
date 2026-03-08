@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, DatePicker, Space, Spin, Empty, Statistic, Row, Col, Typography } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, SwapOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
@@ -12,20 +12,34 @@ interface TunnelTrafficChartProps {
   tunnelId: number
 }
 
+type TrafficPoint = {
+  time: string
+  type: '入站流量' | '出站流量'
+  value: number
+}
+
+type AxisTooltipParam = {
+  axisValue: string
+  marker: string
+  seriesName: string
+  value: number
+}
+
 const TunnelTrafficChart = ({ tunnelId }: TunnelTrafficChartProps) => {
+  void tunnelId
   const [loading, setLoading] = useState(false)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().subtract(7, 'days'),
     dayjs(),
   ])
-  const [trafficData, setTrafficData] = useState<any[]>([])
+  const [trafficData, setTrafficData] = useState<TrafficPoint[]>([])
   const [summary, setSummary] = useState({
     total_traffic_in: 0,
     total_traffic_out: 0,
     total_traffic: 0,
   })
 
-  const fetchTrafficData = async () => {
+  const fetchTrafficData = useCallback(async () => {
     try {
       setLoading(true)
       // TODO: 实现隧道流量统计 API
@@ -35,7 +49,7 @@ const TunnelTrafficChart = ({ tunnelId }: TunnelTrafficChartProps) => {
       // })
 
       // 模拟数据
-      const mockData: any[] = []
+      const mockData: TrafficPoint[] = []
       const days = dateRange[1].diff(dateRange[0], 'days')
       for (let i = 0; i <= days; i++) {
         const date = dateRange[0].add(i, 'days').format('YYYY-MM-DD')
@@ -67,11 +81,11 @@ const TunnelTrafficChart = ({ tunnelId }: TunnelTrafficChartProps) => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [dateRange])
 
   useEffect(() => {
-    fetchTrafficData()
-  }, [dateRange, tunnelId])
+    void fetchTrafficData()
+  }, [fetchTrafficData])
 
   // 准备 ECharts 数据
   const times = Array.from(new Set(trafficData.map((d) => d.time))).sort()
@@ -87,9 +101,9 @@ const TunnelTrafficChart = ({ tunnelId }: TunnelTrafficChartProps) => {
   const option = {
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
+      formatter: (params: AxisTooltipParam[]) => {
         let result = `${params[0].axisValue}<br/>`
-        params.forEach((param: any) => {
+        params.forEach((param) => {
           result += `${param.marker}${param.seriesName}: ${formatBytes(param.value)}<br/>`
         })
         return result

@@ -38,10 +38,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	result, loginErr := h.authService.Login(&services.LoginRequest{
+	result, loginErr := h.authService.LoginWithRefreshToken(&services.LoginRequest{
 		Account:  strings.TrimSpace(req.Email),
 		Password: req.Password,
-	})
+	}, c.ClientIP(), c.GetHeader("User-Agent"))
 	if loginErr != nil {
 		utils.SuccessResponse(c, gin.H{"user": user}, "注册成功")
 		return
@@ -52,19 +52,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // Login POST /api/v1/auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req services.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
-		return
-	}
+	h.LoginDeprecated(c)
+}
 
-	result, err := h.authService.Login(&req)
-	if err != nil {
-		writeServiceError(c, err, "LOGIN_FAILED")
-		return
-	}
-
-	utils.Success(c, result)
+// LoginDeprecated POST /api/v1/auth/login
+func (h *AuthHandler) LoginDeprecated(c *gin.Context) {
+	utils.Error(c, http.StatusGone, "AUTH_V1_DEPRECATED", "认证 v1 接口已下线，请使用 /api/v1/auth/login/v2")
 }
 
 // Me GET /api/v1/auth/me
@@ -86,19 +79,12 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 // Refresh POST /api/v1/auth/refresh
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	userID, _, ok := getUserContext(c)
-	if !ok {
-		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
-		return
-	}
+	h.RefreshDeprecated(c)
+}
 
-	token, err := h.authService.RefreshToken(userID)
-	if err != nil {
-		writeServiceError(c, err, "REFRESH_TOKEN_FAILED")
-		return
-	}
-
-	utils.Success(c, gin.H{"token": token})
+// RefreshDeprecated POST /api/v1/auth/refresh
+func (h *AuthHandler) RefreshDeprecated(c *gin.Context) {
+	utils.Error(c, http.StatusGone, "AUTH_V1_DEPRECATED", "认证 v1 接口已下线，请使用 /api/v1/auth/refresh/v2")
 }
 
 // ChangePassword PUT /api/v1/auth/password

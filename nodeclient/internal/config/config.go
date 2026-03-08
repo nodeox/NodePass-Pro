@@ -1,11 +1,25 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"log"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
 )
+
+var warnLogger = log.New(os.Stdout, "[config] ", log.LstdFlags)
+
+// SetWarnLogger 设置配置模块警告日志输出（测试或嵌入场景可覆写）。
+func SetWarnLogger(logger *log.Logger) {
+	if logger == nil {
+		return
+	}
+	warnLogger = logger
+}
 
 // Config 定义 nodeclient 运行所需配置。
 type Config struct {
@@ -72,7 +86,8 @@ func Load(configPath string, overrides CLIOverrides) (*Config, error) {
 
 	if err := v.ReadInConfig(); err != nil {
 		// 配置文件不存在时，仅使用默认值 + CLI 覆盖。
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var notFoundErr viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFoundErr) && !errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("读取配置文件失败: %w", err)
 		}
 	}
@@ -136,7 +151,7 @@ func (c *Config) Validate() error {
 	}
 	// group_id 为 0 时给出警告，但不阻止启动（兼容旧配置）
 	if c.GroupID == 0 {
-		fmt.Println("警告: group_id 未配置或为 0，节点可能无法正常工作。请在配置文件中设置 group_id")
+		warnLogger.Printf("[WARN] group_id 未配置或为 0，节点可能无法正常工作。请在配置文件中设置 group_id")
 	}
 	if strings.TrimSpace(c.ServiceName) == "" {
 		return fmt.Errorf("service_name 不能为空")

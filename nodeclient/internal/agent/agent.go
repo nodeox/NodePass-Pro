@@ -3,17 +3,18 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	"nodepass-pro/nodeclient/internal/config"
 	"nodepass-pro/nodeclient/internal/heartbeat"
+	"nodepass-pro/nodeclient/internal/logger"
+	"nodepass-pro/nodeclient/internal/metrics"
 	"nodepass-pro/nodeclient/internal/nodepass"
 )
 
@@ -30,12 +31,12 @@ type Agent struct {
 	configCache *config.ConfigCache
 	nodePass    *nodepass.Integration
 	heartbeat   *heartbeat.HeartbeatService
+	metrics     *metrics.Collector
 	isOnline    bool
 	mu          sync.RWMutex
 	applyMu     sync.Mutex
 
-	logger    *log.Logger
-	logFile   *os.File
+	logger    *logger.Logger
 	stopCh    chan struct{}
 	stopOnce  sync.Once
 	waitGroup sync.WaitGroup
@@ -50,21 +51,22 @@ func NewAgent(cfg *config.Config) *Agent {
 		cfg = &config.Config{}
 	}
 
-	logger, logFile := newLogger(cfg.LogPath)
+	log := newLogger(cfg)
 
 	a := &Agent{
 		config:        cfg,
 		configCache:   config.NewConfigCache(cfg.CachePath),
-		nodePass:      nodepass.NewIntegration(logger),
+		nodePass:      nodepass.NewIntegration(log.StdLogger()),
+		metrics:       metrics.NewCollector(),
 		isOnline:      false,
-		logger:        logger,
-		logFile:       logFile,
+		logger:        log,
 		stopCh:        make(chan struct{}),
 		configVersion: -1,
 	}
 
 	a.heartbeat = heartbeat.NewHeartbeatService(cfg)
 	a.heartbeat.SetMetricsProvider(a)
+	a.heartbeat.SetMetricsCollector(a.metrics)
 	a.heartbeat.SetConfigUpdateHandler(a.handleHeartbeatConfigUpdate)
 
 	if a.configCache.Exists() {
@@ -99,7 +101,7 @@ func (a *Agent) Start() error {
 	}
 
 	if err := a.heartbeat.Report(); err != nil {
-		a.logger.Printf("[WARN] 无法连接面板: %v", err)
+		a.logger.Warn("无法连接面板", "error", err)
 		if cachedConfig == nil {
 			return fmt.Errorf("无缓存配置，无法启动")
 		}
@@ -107,7 +109,7 @@ func (a *Agent) Start() error {
 			return fmt.Errorf("应用缓存配置失败: %w", applyErr)
 		}
 		a.setOnline(false)
-		a.logger.Printf("[WARN] 离线模式: 使用本地缓存配置继续运行, version=%d", cachedConfig.ConfigVersion)
+		a.logger.Warn("离线模式: 使用本地缓存配置继续运行", "version", cachedConfig.ConfigVersion)
 	} else {
 		a.setOnline(true)
 		current := a.getCurrentConfig()
@@ -116,7 +118,7 @@ func (a *Agent) Start() error {
 				if applyErr := a.applyConfig(cachedConfig); applyErr != nil {
 					return fmt.Errorf("应用缓存配置失败: %w", applyErr)
 				}
-				a.logger.Printf("[INFO] 在线模式: 面板可用，使用缓存配置启动, version=%d", cachedConfig.ConfigVersion)
+				a.logger.Info("在线模式: 面板可用，使用缓存配置启动", "version", cachedConfig.ConfigVersion)
 			} else {
 				bootstrap := &config.NodeConfig{
 					ConfigVersion: 0,
@@ -130,16 +132,16 @@ func (a *Agent) Start() error {
 					return fmt.Errorf("应用启动空配置失败: %w", applyErr)
 				}
 				if saveErr := a.configCache.Save(bootstrap); saveErr != nil {
-					a.logger.Printf("[WARN] 保存启动空配置失败: %v", saveErr)
+					a.logger.Warn("保存启动空配置失败", "error", saveErr)
 				}
-				a.logger.Printf("[INFO] 在线模式: 启动空配置, version=%d", bootstrap.ConfigVersion)
+				a.logger.Info("在线模式: 启动空配置", "version", bootstrap.ConfigVersion)
 			}
 		} else {
-			a.logger.Printf("[INFO] 在线模式: 从面板获取配置成功, version=%d", current.ConfigVersion)
+			a.logger.Info("在线模式: 从面板获取配置成功", "version", current.ConfigVersion)
 		}
 	}
 
-	a.waitGroup.Add(2)
+	a.waitGroup.Add(3)
 	go func() {
 		defer a.waitGroup.Done()
 		a.heartbeat.Start()
@@ -148,6 +150,12 @@ func (a *Agent) Start() error {
 		defer a.waitGroup.Done()
 		a.watchHeartbeatState()
 	}()
+	go func() {
+		defer a.waitGroup.Done()
+		if err := a.metrics.Start(":9100"); err != nil {
+			a.logger.Warn("启动 Prometheus metrics 服务失败", "error", err)
+		}
+	}()
 
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
@@ -155,9 +163,9 @@ func (a *Agent) Start() error {
 
 	select {
 	case sig := <-signalCh:
-		a.logger.Printf("[INFO] 收到退出信号: %s", sig.String())
+		a.logger.Info("收到退出信号", "signal", sig.String())
 	case <-a.stopCh:
-		a.logger.Printf("[INFO] 收到停止信号")
+		a.logger.Info("收到停止信号")
 	}
 
 	a.Shutdown()
@@ -174,19 +182,20 @@ func (a *Agent) watchHeartbeatState() {
 			return
 		case <-ticker.C:
 			a.setOnline(a.heartbeat.IsOnline())
+			a.updateMetrics()
 		}
 	}
 }
 
 func (a *Agent) handleHeartbeatConfigUpdate(cfg *config.NodeConfig, version int) {
 	if cfg == nil {
-		a.logger.Printf("[WARN] 心跳返回配置更新，但未携带配置内容")
+		a.logger.Warn("心跳返回配置更新，但未携带配置内容")
 		return
 	}
 
 	next := cloneNodeConfig(cfg)
 	if next == nil {
-		a.logger.Printf("[WARN] 配置更新内容为空，已忽略")
+		a.logger.Warn("配置更新内容为空，已忽略")
 		return
 	}
 	if version >= 0 {
@@ -195,16 +204,16 @@ func (a *Agent) handleHeartbeatConfigUpdate(cfg *config.NodeConfig, version int)
 
 	prevVersion := a.getConfigVersion()
 	if err := a.applyConfig(next); err != nil {
-		a.logger.Printf("[WARN] 应用新配置失败: %v", err)
+		a.logger.Warn("应用新配置失败", "error", err)
 		return
 	}
 	if err := a.configCache.Save(next); err != nil {
-		a.logger.Printf("[WARN] 保存配置缓存失败: %v", err)
+		a.logger.Warn("保存配置缓存失败", "error", err)
 	}
 	a.heartbeat.SetCurrentConfigVersion(next.ConfigVersion)
 
 	if next.ConfigVersion != prevVersion {
-		a.logger.Printf("[INFO] 配置已更新: %d -> %d", prevVersion, next.ConfigVersion)
+		a.logger.Info("配置已更新", "from", prevVersion, "to", next.ConfigVersion)
 	}
 }
 
@@ -277,19 +286,21 @@ func (a *Agent) Shutdown() {
 		close(a.stopCh)
 
 		a.heartbeat.Stop()
+		a.metrics.Stop()
 		a.saveFinalState()
 		a.nodePass.StopAll()
 
 		a.waitGroup.Wait()
 
-		if a.logFile != nil {
-			if err := a.logFile.Close(); err != nil {
-				a.logger.Printf("[WARN] 关闭日志文件失败: %v", err)
+		if a.logger != nil {
+			if err := a.logger.Close(); err != nil {
+				a.logger.Warn("关闭日志器失败", "error", err)
 			}
-			a.logFile = nil
 		}
 
-		a.logger.Printf("[INFO] Agent 已停止")
+		if a.logger != nil {
+			a.logger.Info("Agent 已停止")
+		}
 	})
 }
 
@@ -303,9 +314,9 @@ func (a *Agent) setOnline(online bool) {
 		return
 	}
 	if online {
-		a.logger.Printf("[INFO] 运行模式切换: OFFLINE -> ONLINE")
+		a.logger.Info("运行模式切换: OFFLINE -> ONLINE")
 	} else {
-		a.logger.Printf("[INFO] 运行模式切换: ONLINE -> OFFLINE")
+		a.logger.Info("运行模式切换: ONLINE -> OFFLINE")
 	}
 }
 
@@ -327,23 +338,31 @@ func (a *Agent) getCurrentConfig() *config.NodeConfig {
 	return cloneNodeConfig(a.currentConfig)
 }
 
-func newLogger(logPath string) (*log.Logger, *os.File) {
-	baseWriter := io.Writer(os.Stdout)
-	var logFile *os.File
-
-	if logPath != "" {
-		if err := os.MkdirAll(logPath, 0o755); err == nil {
-			filePath := filepath.Join(logPath, "nodeclient.log")
-			file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-			if err == nil {
-				logFile = file
-				baseWriter = io.MultiWriter(os.Stdout, file)
-			}
-		}
+func newLogger(cfg *config.Config) *logger.Logger {
+	logLevel := "info"
+	if cfg.DebugMode || cfg.Debug {
+		logLevel = "debug"
 	}
 
-	logger := log.New(baseWriter, "[nodeclient] ", log.LstdFlags)
-	return logger, logFile
+	logPath := ""
+	if cfg.LogPath != "" {
+		logPath = filepath.Join(cfg.LogPath, "nodeclient.log")
+	}
+
+	log, err := logger.New(logger.Config{
+		Level:      logLevel,
+		OutputPath: logPath,
+		Prefix:     "nodeclient",
+	})
+	if err != nil {
+		// 降级到标准输出
+		log, _ = logger.New(logger.Config{
+			Level:  logLevel,
+			Prefix: "nodeclient",
+		})
+	}
+
+	return log
 }
 
 func cloneNodeConfig(cfg *config.NodeConfig) *config.NodeConfig {
@@ -365,7 +384,7 @@ func (a *Agent) saveFinalState() {
 	cfg := a.getCurrentConfig()
 	version := a.getConfigVersion()
 	if cfg == nil {
-		a.logger.Printf("[WARN] 无可保存的配置状态，跳过缓存落盘")
+		a.logger.Warn("无可保存的配置状态，跳过缓存落盘")
 		return
 	}
 	if cfg.ConfigVersion == 0 && version > 0 {
@@ -373,8 +392,41 @@ func (a *Agent) saveFinalState() {
 	}
 
 	if err := a.configCache.Save(cfg); err != nil {
-		a.logger.Printf("[WARN] 保存最终配置状态失败: %v", err)
+		a.logger.Warn("保存最终配置状态失败", "error", err)
 		return
 	}
-	a.logger.Printf("[INFO] 已保存最终配置状态到缓存, version=%d", cfg.ConfigVersion)
+	a.logger.Info("已保存最终配置状态到缓存", "version", cfg.ConfigVersion)
+}
+
+func (a *Agent) updateMetrics() {
+	if a == nil || a.metrics == nil {
+		return
+	}
+
+	// 更新配置版本
+	a.metrics.SetConfigVersion(a.getConfigVersion())
+
+	// 更新规则统计
+	ruleStatus := a.nodePass.GetAllStatus()
+	var running, stopped, errored int
+	for _, status := range ruleStatus {
+		switch status.Status {
+		case nodepass.StatusRunning:
+			running++
+		case nodepass.StatusStopped:
+			stopped++
+		case nodepass.StatusError:
+			errored++
+		}
+	}
+	a.metrics.SetRuleStats(len(ruleStatus), running, stopped, errored)
+
+	// 更新流量统计
+	trafficStats := a.nodePass.GetTrafficStats()
+	for _, stat := range trafficStats {
+		ruleID := strconv.Itoa(stat.RuleID)
+		a.metrics.SetTrafficStats(ruleID, stat.DeltaIn, stat.DeltaOut)
+		// 注意：activeConnections 在 nodepass 中暂未实现，这里设为 0
+		a.metrics.SetActiveConnections(ruleID, 0)
+	}
 }

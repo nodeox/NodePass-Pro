@@ -2,7 +2,9 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"nodepass-pro/backend/internal/models"
 
@@ -11,7 +13,8 @@ import (
 )
 
 func TestTunnelStartFailsWhenExitEndpointMissing(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("初始化测试数据库失败: %v", err)
 	}

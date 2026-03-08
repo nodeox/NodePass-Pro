@@ -8,6 +8,13 @@ interface ProtocolStatsProps {
   tunnels: Tunnel[]
 }
 
+type AxisTooltipParam = {
+  axisValue: string
+  marker: string
+  seriesName: string
+  value: number
+}
+
 const ProtocolStats = ({ tunnels }: ProtocolStatsProps) => {
   // 按协议统计
   const protocolStats = tunnels.reduce((acc, tunnel) => {
@@ -74,9 +81,9 @@ const ProtocolStats = ({ tunnels }: ProtocolStatsProps) => {
       axisPointer: {
         type: 'shadow',
       },
-      formatter: (params: any) => {
+      formatter: (params: AxisTooltipParam[]) => {
         let result = `${params[0].axisValue}<br/>`
-        params.forEach((param: any) => {
+        params.forEach((param) => {
           result += `${param.marker}${param.seriesName}: ${formatBytes(param.value)}<br/>`
         })
         return result

@@ -22,6 +22,7 @@ type StorageMode = 'memory' | 'session' | 'local'
 // 认证数据结构
 interface AuthData {
   token: string | null
+  refreshToken?: string | null
   user: User | null
   isAuthenticated: boolean
   expiresAt?: number // Token 过期时间戳
@@ -136,11 +137,22 @@ export const getStoredToken = (): string | null => {
 
   // 检查是否过期
   if (isTokenExpired(parsed.state.expiresAt)) {
-    clearAuthStorage()
+    // Access Token 过期时保留 refresh token，交给拦截器走刷新流程
     return null
   }
 
   return parsed.state.token ?? null
+}
+
+/**
+ * 获取存储的 Refresh Token
+ */
+export const getStoredRefreshToken = (): string | null => {
+  const parsed = parseAuthStorage()
+  if (!parsed?.state) {
+    return null
+  }
+  return parsed.state.refreshToken ?? null
 }
 
 /**
@@ -181,6 +193,7 @@ export const setAuthToken = (token: string | null, expiresIn: number = 7 * 24 * 
     version: current?.version ?? 1,
     state: {
       token,
+      refreshToken: current?.state?.refreshToken ?? null,
       user: current?.state?.user ?? null,
       isAuthenticated: true,
       expiresAt,
@@ -205,6 +218,53 @@ export const setAuthToken = (token: string | null, expiresIn: number = 7 * 24 * 
 }
 
 /**
+ * 设置 Access/Refresh Token 会话
+ */
+export const setAuthSession = (params: {
+  accessToken: string
+  refreshToken?: string | null
+  expiresIn?: number
+  user?: User | null
+}): void => {
+  const accessToken = String(params.accessToken ?? '').trim()
+  if (!accessToken) {
+    clearAuthStorage()
+    return
+  }
+
+  const current = parseAuthStorage()
+  const expiresIn = params.expiresIn && params.expiresIn > 0 ? params.expiresIn : 7 * 24 * 60 * 60
+  const expiresAt = Date.now() + expiresIn * 1000
+  const refreshToken = params.refreshToken !== undefined
+    ? (params.refreshToken ? String(params.refreshToken).trim() : null)
+    : (current?.state?.refreshToken ?? null)
+
+  const next: PersistedAuthShape = {
+    version: current?.version ?? 1,
+    state: {
+      token: accessToken,
+      refreshToken,
+      user: params.user !== undefined ? (params.user ?? null) : (current?.state?.user ?? null),
+      isAuthenticated: true,
+      expiresAt,
+    },
+  }
+
+  const storage = getStorage()
+  if (!storage) {
+    memoryStorage = next.state!
+    return
+  }
+
+  try {
+    storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
+  } catch (error) {
+    console.error('Failed to store auth session:', error)
+    memoryStorage = next.state!
+  }
+}
+
+/**
  * 设置用户信息
  */
 export const setUserInfo = (user: User | null): void => {
@@ -213,6 +273,7 @@ export const setUserInfo = (user: User | null): void => {
     version: current?.version ?? 1,
     state: {
       token: current?.state?.token ?? null,
+      refreshToken: current?.state?.refreshToken ?? null,
       user,
       isAuthenticated: !!user,
       expiresAt: current?.state?.expiresAt,
@@ -241,6 +302,7 @@ export const clearAuthStorage = (): void => {
   // 清除内存
   memoryStorage = {
     token: null,
+    refreshToken: null,
     user: null,
     isAuthenticated: false,
   }
@@ -284,10 +346,11 @@ export const migrateOldStorage = (): void => {
     const parsed = JSON.parse(oldData) as PersistedAuthShape
     if (parsed?.state?.token) {
       // 迁移到新的存储方式
-      setAuthToken(parsed.state.token)
-      if (parsed.state.user) {
-        setUserInfo(parsed.state.user)
-      }
+      setAuthSession({
+        accessToken: parsed.state.token,
+        refreshToken: parsed.state.refreshToken ?? null,
+        user: parsed.state.user ?? null,
+      })
 
       // 清除旧数据
       localStorage.removeItem('nodepass-auth')

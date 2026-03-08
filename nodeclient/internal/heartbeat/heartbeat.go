@@ -43,6 +43,7 @@ type TrafficData struct {
 type HeartbeatPayload struct {
 	NodeID               string         `json:"node_id"`
 	Token                string         `json:"token"`
+	NodeRole             string         `json:"node_role,omitempty"`
 	CurrentConfigVersion int            `json:"current_config_version"`
 	ConnectionAddress    string         `json:"connection_address,omitempty"`
 	SystemInfo           SystemInfoData `json:"system_info"`
@@ -97,10 +98,19 @@ type HeartbeatService struct {
 	lastNetSnapshotTime time.Time
 	logger              *log.Logger
 	metricsProvider     RuntimeMetricsProvider
+	metricsCollector    MetricsCollector
 	configUpdateHandler ConfigUpdateHandler
 	configVersion       int
 	started             bool
 	resolvedAddress     string
+}
+
+// MetricsCollector 定义 metrics 收集器接口。
+type MetricsCollector interface {
+	RecordHeartbeatAttempt()
+	RecordHeartbeatSuccess(timestamp float64)
+	RecordHeartbeatFailure()
+	SetSystemStats(cpuUsage, memoryUsage, diskUsage float64, bandwidthIn, bandwidthOut int64)
 }
 
 // NewHeartbeatService 创建心跳服务。
@@ -127,6 +137,13 @@ func (h *HeartbeatService) SetMetricsProvider(provider RuntimeMetricsProvider) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.metricsProvider = provider
+}
+
+// SetMetricsCollector 设置 Prometheus metrics 收集器（可选）。
+func (h *HeartbeatService) SetMetricsCollector(collector MetricsCollector) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.metricsCollector = collector
 }
 
 // SetConfigUpdateHandler 设置配置更新回调（可选）。
@@ -227,6 +244,14 @@ func (h *HeartbeatService) Report() error {
 		return h.reportError(fmt.Errorf("配置不能为空"))
 	}
 
+	// 记录心跳尝试
+	h.mu.RLock()
+	collector := h.metricsCollector
+	h.mu.RUnlock()
+	if collector != nil {
+		collector.RecordHeartbeatAttempt()
+	}
+
 	hubURL := strings.TrimRight(strings.TrimSpace(h.config.HubURL), "/")
 	if hubURL == "" {
 		return h.reportError(fmt.Errorf("hub_url 不能为空"))
@@ -244,6 +269,7 @@ func (h *HeartbeatService) Report() error {
 	payload := HeartbeatPayload{
 		NodeID:               h.config.NodeID,
 		Token:                h.config.NodeToken,
+		NodeRole:             strings.TrimSpace(h.config.NodeRole),
 		CurrentConfigVersion: h.GetCurrentConfigVersion(),
 		ConnectionAddress:    connectionAddress,
 		SystemInfo:           sysInfo,
@@ -292,6 +318,18 @@ func (h *HeartbeatService) Report() error {
 
 	h.markOnlineSuccess()
 
+	// 记录心跳成功和系统统计
+	if collector != nil {
+		collector.RecordHeartbeatSuccess(float64(time.Now().Unix()))
+		collector.SetSystemStats(
+			sysInfo.CPUUsage,
+			sysInfo.MemoryUsage,
+			sysInfo.DiskUsage,
+			sysInfo.BandwidthIn,
+			sysInfo.BandwidthOut,
+		)
+	}
+
 	if data.ConfigUpdated {
 		h.logger.Printf("[INFO] 收到新配置: version=%d", data.NewConfigVersion)
 		h.mu.RLock()
@@ -303,10 +341,27 @@ func (h *HeartbeatService) Report() error {
 			h.logger.Printf("[WARN] 未设置配置更新回调，已忽略新配置")
 		}
 	} else {
-		h.SetCurrentConfigVersion(data.NewConfigVersion)
+		h.applyReportedConfigVersion(data.NewConfigVersion)
 	}
 
 	return nil
+}
+
+func (h *HeartbeatService) applyReportedConfigVersion(version int) {
+	if h == nil {
+		return
+	}
+	if version < 0 {
+		return
+	}
+
+	current := h.GetCurrentConfigVersion()
+	if current >= 0 && version < current {
+		h.logger.Printf("[WARN] 忽略回退配置版本: current=%d reported=%d", current, version)
+		return
+	}
+
+	h.SetCurrentConfigVersion(version)
 }
 
 func (h *HeartbeatService) resolveConnectionAddress() string {
@@ -415,7 +470,13 @@ func (h *HeartbeatService) reportError(err error) error {
 	h.isOnline = false
 	h.failureCount++
 	failures := h.failureCount
+	collector := h.metricsCollector
 	h.mu.Unlock()
+
+	// 记录心跳失败
+	if collector != nil {
+		collector.RecordHeartbeatFailure()
+	}
 
 	h.logger.Printf("[WARN] 心跳发送失败: %v", err)
 	if failures >= 3 {
@@ -536,18 +597,27 @@ func (h *HeartbeatService) readCPUUsagePercent() float64 {
 }
 
 func parseHeartbeatResponse(body []byte) (HeartbeatResponseData, error) {
-	var envelope heartbeatResponseEnvelope
-	if err := json.Unmarshal(body, &envelope); err == nil {
-		if !envelope.Success {
-			if envelope.Error != nil && envelope.Error.Message != "" {
-				return HeartbeatResponseData{}, fmt.Errorf("心跳接口失败: %s (%s)", envelope.Error.Message, envelope.Error.Code)
-			}
-			if strings.TrimSpace(envelope.Message) != "" {
-				return HeartbeatResponseData{}, fmt.Errorf("心跳接口失败: %s", strings.TrimSpace(envelope.Message))
-			}
-		}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err == nil {
+		_, hasSuccess := raw["success"]
+		_, hasData := raw["data"]
+		_, hasMessage := raw["message"]
+		_, hasError := raw["error"]
 
-		if envelope.Success || envelope.Error != nil || strings.TrimSpace(envelope.Message) != "" {
+		if hasSuccess || hasData || hasMessage || hasError {
+			var envelope heartbeatResponseEnvelope
+			if err := json.Unmarshal(body, &envelope); err != nil {
+				return HeartbeatResponseData{}, fmt.Errorf("解析心跳响应失败: %w", err)
+			}
+			if !envelope.Success {
+				if envelope.Error != nil && envelope.Error.Message != "" {
+					return HeartbeatResponseData{}, fmt.Errorf("心跳接口失败: %s (%s)", envelope.Error.Message, envelope.Error.Code)
+				}
+				if strings.TrimSpace(envelope.Message) != "" {
+					return HeartbeatResponseData{}, fmt.Errorf("心跳接口失败: %s", strings.TrimSpace(envelope.Message))
+				}
+				return HeartbeatResponseData{}, fmt.Errorf("心跳接口失败: success=false")
+			}
 			return envelope.Data, nil
 		}
 	}

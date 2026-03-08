@@ -22,9 +22,9 @@ interface UseWebSocketResult {
   reconnect: () => void
 }
 
-const buildWebSocketURL = (token: string): string => {
+const buildWebSocketURL = (): string => {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${window.location.host}/ws?token=${encodeURIComponent(token)}`
+  return `${protocol}://${window.location.host}/ws`
 }
 
 const parseMessage = (raw: string): WebSocketEventMessage | null => {
@@ -34,7 +34,7 @@ const parseMessage = (raw: string): WebSocketEventMessage | null => {
       return null
     }
     return parsed
-  } catch (_error) {
+  } catch {
     return null
   }
 }
@@ -113,6 +113,12 @@ export const useWebSocket = ({
     socketRef.current = null
   }, [])
 
+  const teardownConnection = useCallback((): void => {
+    clearReconnectTimer()
+    stopHeartbeat()
+    closeSocket()
+  }, [clearReconnectTimer, closeSocket, stopHeartbeat])
+
   const scheduleReconnect = useCallback((): void => {
     if (manualCloseRef.current || !enabledRef.current || !tokenRef.current) {
       return
@@ -165,7 +171,7 @@ export const useWebSocket = ({
       return
     }
 
-    const socket = new WebSocket(buildWebSocketURL(tokenRef.current))
+    const socket = new WebSocket(buildWebSocketURL(), ['bearer', tokenRef.current])
     socketRef.current = socket
 
     socket.onopen = () => {
@@ -211,28 +217,25 @@ export const useWebSocket = ({
 
   const disconnect = useCallback((): void => {
     manualCloseRef.current = true
-    clearReconnectTimer()
-    stopHeartbeat()
-    closeSocket()
+    teardownConnection()
     updateConnected(false)
-  }, [clearReconnectTimer, closeSocket, stopHeartbeat, updateConnected])
+  }, [teardownConnection, updateConnected])
 
   const reconnect = useCallback((): void => {
     manualCloseRef.current = true
-    clearReconnectTimer()
-    stopHeartbeat()
-    closeSocket()
+    teardownConnection()
     reconnectAttemptRef.current = 0
     manualCloseRef.current = false
     connectRef.current()
-  }, [clearReconnectTimer, closeSocket, stopHeartbeat])
+  }, [teardownConnection])
 
   useEffect(() => {
     tokenRef.current = token ?? null
     enabledRef.current = Boolean(enabled)
 
     if (!enabled || !token) {
-      disconnect()
+      manualCloseRef.current = true
+      teardownConnection()
       return
     }
 
@@ -242,12 +245,9 @@ export const useWebSocket = ({
 
     return () => {
       manualCloseRef.current = true
-      clearReconnectTimer()
-      stopHeartbeat()
-      closeSocket()
-      updateConnected(false)
+      teardownConnection()
     }
-  }, [clearReconnectTimer, closeSocket, connect, disconnect, enabled, stopHeartbeat, token, updateConnected])
+  }, [connect, enabled, teardownConnection, token])
 
   const send = useCallback((payload: string | Record<string, unknown>): boolean => {
     const socket = socketRef.current

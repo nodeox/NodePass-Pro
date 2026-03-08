@@ -20,7 +20,7 @@ import {
   message,
   Spin,
 } from 'antd'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
@@ -45,7 +45,7 @@ const UserDetail = () => {
   const [loading, setLoading] = useState<boolean>(false)
   const [user, setUser] = useState<AdminUserRecord | null>(null)
 
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     if (!id) return
     setLoading(true)
     try {
@@ -56,11 +56,11 @@ const UserDetail = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     void loadUser()
-  }, [id])
+  }, [loadUser])
 
   if (loading) {
     return (
@@ -127,13 +127,13 @@ const UserDetail = () => {
               Lv.{user.vip_level}
             </Descriptions.Item>
             <Descriptions.Item label="VIP 到期时间">
-              {(user as any).vip_expires_at ? formatDateTime((user as any).vip_expires_at) : '-'}
+              {user.vip_expires_at ? formatDateTime(user.vip_expires_at) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="注册时间">
               {formatDateTime(user.created_at)}
             </Descriptions.Item>
             <Descriptions.Item label="最后登录">
-              {(user as any).last_login_at ? formatDateTime((user as any).last_login_at) : '-'}
+              {user.last_login_at ? formatDateTime(user.last_login_at) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="Telegram ID">
               {user.telegram_id || '-'}
@@ -184,10 +184,10 @@ const UserDetail = () => {
         {/* 权限配置卡片 */}
         <Card title={<Space><SafetyOutlined /> 权限配置</Space>}>
           <Descriptions column={{ xs: 1, sm: 2, md: 3 }}>
-            <Descriptions.Item label="最大规则数">{(user as any).max_rules || '-'}</Descriptions.Item>
-            <Descriptions.Item label="最大带宽">{(user as any).max_bandwidth ? `${(user as any).max_bandwidth} Mbps` : '-'}</Descriptions.Item>
-            <Descriptions.Item label="最大自建入口节点">{(user as any).max_self_hosted_entry_nodes || '-'}</Descriptions.Item>
-            <Descriptions.Item label="最大自建出口节点">{(user as any).max_self_hosted_exit_nodes || '-'}</Descriptions.Item>
+            <Descriptions.Item label="最大规则数">{user.max_rules ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="最大带宽">{user.max_bandwidth ? `${user.max_bandwidth} Mbps` : '-'}</Descriptions.Item>
+            <Descriptions.Item label="最大自建入口节点">{user.max_self_hosted_entry_nodes ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="最大自建出口节点">{user.max_self_hosted_exit_nodes ?? '-'}</Descriptions.Item>
           </Descriptions>
         </Card>
 

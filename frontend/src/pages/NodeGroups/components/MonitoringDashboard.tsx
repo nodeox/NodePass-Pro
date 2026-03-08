@@ -10,15 +10,28 @@ interface MonitoringDashboardProps {
   group: NodeGroup
 }
 
+type TrafficPoint = {
+  time: string
+  type: '入站流量' | '出站流量'
+  value: number
+}
+
+type AxisTooltipParam = {
+  axisValue: string
+  marker: string
+  seriesName: string
+  value: number
+}
+
 const MonitoringDashboard = ({ group }: MonitoringDashboardProps) => {
-  const [trafficData, setTrafficData] = useState<any[]>([])
+  const [trafficData, setTrafficData] = useState<TrafficPoint[]>([])
 
   const stats = group.stats
 
   useEffect(() => {
     // 模拟实时流量数据
     const generateMockData = () => {
-      const data: any[] = []
+      const data: TrafficPoint[] = []
       const now = dayjs()
       for (let i = 23; i >= 0; i--) {
         const time = now.subtract(i, 'hour').format('HH:00')
@@ -52,9 +65,9 @@ const MonitoringDashboard = ({ group }: MonitoringDashboardProps) => {
   const option = {
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
+      formatter: (params: AxisTooltipParam[]) => {
         let result = `${params[0].axisValue}<br/>`
-        params.forEach((param: any) => {
+        params.forEach((param) => {
           result += `${param.marker}${param.seriesName}: ${formatBytes(param.value)}<br/>`
         })
         return result

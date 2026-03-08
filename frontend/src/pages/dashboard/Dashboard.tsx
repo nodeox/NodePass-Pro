@@ -183,7 +183,7 @@ const Dashboard = () => {
         setAnnouncements((announcementResult.list ?? []).slice(0, 3))
         setAuditLogs(auditLogItems.slice(0, 5))
         setAuditForbidden(isAuditForbidden)
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           message.error('仪表盘数据加载失败')
           setAuditLogs([])

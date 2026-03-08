@@ -101,7 +101,7 @@ const NodeGroupsPage = () => {
     void loadData()
   }, [loadData])
 
-  const handleToggle = async (record: NodeGroup) => {
+  const handleToggle = useCallback(async (record: NodeGroup) => {
     try {
       await nodeGroupApi.toggle(record.id)
       message.success(record.is_enabled ? '已禁用节点组' : '已启用节点组')
@@ -109,9 +109,9 @@ const NodeGroupsPage = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '切换节点组状态失败'))
     }
-  }
+  }, [loadData])
 
-  const handleDelete = (record: NodeGroup) => {
+  const handleDelete = useCallback((record: NodeGroup) => {
     Modal.confirm({
       title: '删除节点组',
       content: `确认删除节点组「${record.name}」吗？此操作不可恢复。`,
@@ -128,15 +128,15 @@ const NodeGroupsPage = () => {
         }
       },
     })
-  }
+  }, [loadData])
 
-  const handleCopy = (record: NodeGroup) => {
+  const handleCopy = useCallback((record: NodeGroup) => {
     navigate('/node-groups/create', {
       state: {
         copyFrom: record,
       },
     })
-  }
+  }, [navigate])
 
   const handleBatchEnable = async () => {
     if (selectedRowKeys.length === 0) {
@@ -369,7 +369,7 @@ const NodeGroupsPage = () => {
         ),
       },
     ],
-    [navigate, handleToggle, handleDelete],
+    [navigate, handleCopy, handleToggle, handleDelete],
   )
 
   return (

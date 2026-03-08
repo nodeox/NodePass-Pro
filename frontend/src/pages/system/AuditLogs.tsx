@@ -26,7 +26,7 @@ const parseDetails = (raw?: string | null): string => {
   try {
     const parsed = JSON.parse(raw)
     return JSON.stringify(parsed, null, 2)
-  } catch (_error) {
+  } catch {
     return raw
   }
 }

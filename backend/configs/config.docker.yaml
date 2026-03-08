@@ -42,7 +42,6 @@ telegram:
 
 license:
   enabled: false
-  verify_url: "https://license.nodepass.pro/api/v1/license/verify"
   license_key: ""
   machine_id: ""
   domain: ""

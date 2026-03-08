@@ -2,7 +2,7 @@ import { Spin, message } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { setAuthToken, telegramApi } from '../../services/api'
+import { setAuthSession, telegramApi } from '../../services/api'
 import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
 import { getHomePathByRole } from '../../utils/route'
@@ -28,7 +28,12 @@ const TelegramCallback = () => {
           isAuthenticated: true,
           isLoading: false,
         })
-        setAuthToken(result.token)
+        setAuthSession({
+          accessToken: result.token,
+          refreshToken: result.refreshToken ?? null,
+          expiresIn: result.expiresIn,
+          user: result.user,
+        })
         const redirectTarget = (result.redirect_uri ?? '').trim()
         if (redirectTarget && redirectTarget.startsWith('/')) {
           navigate(redirectTarget, { replace: true })
@@ -52,4 +57,3 @@ const TelegramCallback = () => {
 }
 
 export default TelegramCallback
-

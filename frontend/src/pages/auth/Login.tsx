@@ -5,11 +5,11 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import BrandLogo from '../../components/common/BrandLogo'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { setAuthToken, telegramApi } from '../../services/api'
+import { setAuthSession, telegramApi } from '../../services/api'
 import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
 import { getHomePathByRole } from '../../utils/route'
-import type { User } from '../../types'
+import type { LoginResult } from '../../types'
 
 type LoginFormValues = {
   email: string
@@ -18,11 +18,6 @@ type LoginFormValues = {
 }
 
 type TelegramWidgetUser = Record<string, unknown>
-
-type TelegramLoginResult = {
-  token: string
-  user: User
-}
 
 declare global {
   interface Window {
@@ -79,13 +74,18 @@ const Login = () => {
       try {
         const result = (await telegramApi.login(
           telegramUser,
-        )) as TelegramLoginResult
+        )) as LoginResult
         useAuthStore.setState({
           token: result.token,
           user: result.user,
           isAuthenticated: true,
         })
-        setAuthToken(result.token)
+        setAuthSession({
+          accessToken: result.token,
+          refreshToken: result.refreshToken ?? null,
+          expiresIn: result.expiresIn,
+          user: result.user,
+        })
         message.success('Telegram 登录成功')
         navigate(getHomePathByRole(result.user?.role), { replace: true })
       } catch (error) {

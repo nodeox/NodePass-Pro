@@ -19,7 +19,6 @@ BACKEND_VERSION="${BACKEND_VERSION:-}"
 FRONTEND_VERSION="${FRONTEND_VERSION:-}"
 NODECLIENT_VERSION="${NODECLIENT_VERSION:-}"
 LICENSE_KEY="${LICENSE_KEY:-${NODEPASS_LICENSE_KEY:-}}"
-LICENSE_VERIFY_URL="${LICENSE_VERIFY_URL:-https://license.nodepass.pro/api/v1/license/verify}"
 LICENSE_MACHINE_ID="${LICENSE_MACHINE_ID:-}"
 LICENSE_ACTION="${LICENSE_ACTION:-install}"
 LICENSE_VERIFIED="${LICENSE_VERIFIED:-false}"
@@ -109,7 +108,6 @@ NodePass Pro 一键部署脚本
   --no-build                      启动时不执行镜像构建
   --skip-nodeclient-build         跳过 nodeclient 二进制自动构建
   --license-key <授权码>          授权码（非 down 模式必填）
-  --license-server <URL>          授权验证接口（默认: https://license.nodepass.pro/api/v1/license/verify）
   --machine-id <ID>               指定机器标识（可选，默认自动检测）
   --license-domain <域名>         运行时授权域名（启用运行时授权时建议设置）
   --license-site-url <URL>        运行时授权站点地址（可选）
@@ -124,7 +122,6 @@ NodePass Pro 一键部署脚本
   BACKEND_VERSION                 覆盖后端构建版本（默认读取 backend/VERSION）
   FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
   LICENSE_KEY                     授权码（可替代 --license-key）
-  LICENSE_VERIFY_URL              授权验证接口（可替代 --license-server）
   BACKEND_LICENSE_DOMAIN          运行时授权域名（启用运行时授权时建议设置）
   BACKEND_LICENSE_SITE_URL        运行时授权站点地址（可选）
 
@@ -313,7 +310,7 @@ parse_args() {
         shift 2
         ;;
       --license-server)
-        LICENSE_VERIFY_URL="${2:-}"
+        # 授权地址已固化，此参数仅做兼容占位。
         shift 2
         ;;
       --machine-id)
@@ -365,7 +362,6 @@ verify_license_or_exit() {
   log_info "开始授权校验..."
   local verify_output
   if ! verify_output="$(python3 "$verify_script" \
-    --verify-url "$LICENSE_VERIFY_URL" \
     --license-key "$LICENSE_KEY" \
     --machine-id "$machine_id" \
     --action "$LICENSE_ACTION" \
@@ -392,7 +388,6 @@ run_compose() {
     PANEL_VERSION="${PANEL_VERSION}" \
     NODECLIENT_VERSION="${NODECLIENT_VERSION}" \
     LICENSE_KEY="${LICENSE_KEY}" \
-    LICENSE_VERIFY_URL="${LICENSE_VERIFY_URL}" \
     LICENSE_MACHINE_ID="${LICENSE_MACHINE_ID}" \
     BACKEND_LICENSE_ENABLED="${BACKEND_LICENSE_ENABLED}" \
     BACKEND_LICENSE_VERIFY_INTERVAL="${BACKEND_LICENSE_VERIFY_INTERVAL}" \

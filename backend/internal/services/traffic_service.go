@@ -314,7 +314,9 @@ func (s *TrafficService) MonthlyReset() error {
 		return fmt.Errorf("查询超限用户失败: %w", err)
 	}
 
-	if err := tx.Model(&models.User{}).Update("traffic_used", 0).Error; err != nil {
+	if err := tx.Model(&models.User{}).
+		Where("1 = 1").
+		Update("traffic_used", 0).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("重置流量使用量失败: %w", err)
 	}

@@ -38,10 +38,11 @@ func TelegramSSOTicketTTL() time.Duration {
 
 // TelegramService Telegram Bot 与 Widget 登录服务。
 type TelegramService struct {
-	db         *gorm.DB
-	httpClient *http.Client
-	botToken   string
-	vipService *VIPService
+	db                  *gorm.DB
+	httpClient          *http.Client
+	botToken            string
+	vipService          *VIPService
+	refreshTokenService *RefreshTokenService
 }
 
 // TelegramUpdate Webhook Update。
@@ -86,7 +87,8 @@ func NewTelegramService(db *gorm.DB) *TelegramService {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		vipService: NewVIPService(db),
+		vipService:          NewVIPService(db),
+		refreshTokenService: NewRefreshTokenService(db),
 	}
 }
 
@@ -258,49 +260,49 @@ func (s *TelegramService) UnbindAccount(userID uint) error {
 	}).Error
 }
 
-// VerifyWidgetLogin 验证 Telegram Widget 登录并返回 JWT。
-func (s *TelegramService) VerifyWidgetLogin(data map[string]string) (string, *models.User, error) {
+// VerifyWidgetLogin 验证 Telegram Widget 登录并返回 access/refresh token。
+func (s *TelegramService) VerifyWidgetLogin(data map[string]string, ipAddress, userAgent string) (*LoginResult, error) {
 	if len(data) == 0 {
-		return "", nil, fmt.Errorf("%w: 登录数据为空", ErrInvalidParams)
+		return nil, fmt.Errorf("%w: 登录数据为空", ErrInvalidParams)
 	}
 
 	cfg := config.GlobalConfig
 	if cfg == nil || strings.TrimSpace(cfg.Telegram.BotToken) == "" {
-		return "", nil, fmt.Errorf("%w: Telegram Bot Token 未配置", ErrInvalidParams)
+		return nil, fmt.Errorf("%w: Telegram Bot Token 未配置", ErrInvalidParams)
 	}
 
 	hash := strings.TrimSpace(data["hash"])
 	if hash == "" {
-		return "", nil, fmt.Errorf("%w: 缺少 hash", ErrInvalidParams)
+		return nil, fmt.Errorf("%w: 缺少 hash", ErrInvalidParams)
 	}
 
 	authDateRaw := strings.TrimSpace(data["auth_date"])
 	authDate, err := strconv.ParseInt(authDateRaw, 10, 64)
 	if err != nil || authDate <= 0 {
-		return "", nil, fmt.Errorf("%w: auth_date 无效", ErrInvalidParams)
+		return nil, fmt.Errorf("%w: auth_date 无效", ErrInvalidParams)
 	}
 	authTime := time.Unix(authDate, 0)
 	if time.Since(authTime) > 24*time.Hour || authTime.After(time.Now().Add(2*time.Minute)) {
-		return "", nil, fmt.Errorf("%w: 登录数据已过期", ErrUnauthorized)
+		return nil, fmt.Errorf("%w: 登录数据已过期", ErrUnauthorized)
 	}
 
 	if !verifyTelegramWidgetSignature(cfg.Telegram.BotToken, data) {
-		return "", nil, fmt.Errorf("%w: Telegram 签名校验失败", ErrUnauthorized)
+		return nil, fmt.Errorf("%w: Telegram 签名校验失败", ErrUnauthorized)
 	}
 
 	telegramID := strings.TrimSpace(data["id"])
 	if telegramID == "" {
-		return "", nil, fmt.Errorf("%w: 缺少 id", ErrInvalidParams)
+		return nil, fmt.Errorf("%w: 缺少 id", ErrInvalidParams)
 	}
 
 	user, err := s.getUserByTelegramID(telegramID)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", nil, err
+			return nil, err
 		}
 		user, err = s.autoRegisterTelegramUser(data)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 	} else {
 		username := strings.TrimSpace(data["username"])
@@ -312,11 +314,7 @@ func (s *TelegramService) VerifyWidgetLogin(data map[string]string) (string, *mo
 		}
 	}
 
-	token, err := generateUserJWT(user.ID, user.Role)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, user, nil
+	return s.issueLoginResult(user, ipAddress, userAgent)
 }
 
 // GenerateSSOLoginURL 生成 Telegram SSO 一次性登录链接。
@@ -393,68 +391,100 @@ func (s *TelegramService) GenerateSSOLoginURL(userID uint, redirectURI string, p
 	return loginURL, ticket, expiresAt, nil
 }
 
-// ConsumeSSOTicket 消费一次性 SSO 登录票据并签发 JWT。
-func (s *TelegramService) ConsumeSSOTicket(ticket string) (string, *models.User, string, error) {
+// ConsumeSSOTicket 消费一次性 SSO 登录票据并签发 access/refresh token。
+func (s *TelegramService) ConsumeSSOTicket(ticket string, ipAddress, userAgent string) (*LoginResult, string, error) {
 	ticket = strings.TrimSpace(ticket)
 	if ticket == "" {
-		return "", nil, "", fmt.Errorf("%w: ticket 不能为空", ErrInvalidParams)
+		return nil, "", fmt.Errorf("%w: ticket 不能为空", ErrInvalidParams)
 	}
 
 	key := "telegram_sso_ticket:" + hashTokenSHA256(ticket)
 	var ticketRecord models.SystemConfig
 	if err := s.db.Where("key = ?", key).First(&ticketRecord).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", nil, "", fmt.Errorf("%w: 登录票据无效或已失效", ErrUnauthorized)
+			return nil, "", fmt.Errorf("%w: 登录票据无效或已失效", ErrUnauthorized)
 		}
-		return "", nil, "", fmt.Errorf("查询登录票据失败: %w", err)
+		return nil, "", fmt.Errorf("查询登录票据失败: %w", err)
 	}
 	if ticketRecord.Value == nil || strings.TrimSpace(*ticketRecord.Value) == "" {
-		return "", nil, "", fmt.Errorf("%w: 登录票据无效", ErrUnauthorized)
+		return nil, "", fmt.Errorf("%w: 登录票据无效", ErrUnauthorized)
 	}
 
 	var payload telegramSSOTicketPayload
 	if err := json.Unmarshal([]byte(*ticketRecord.Value), &payload); err != nil {
-		return "", nil, "", fmt.Errorf("%w: 登录票据格式错误", ErrUnauthorized)
+		return nil, "", fmt.Errorf("%w: 登录票据格式错误", ErrUnauthorized)
 	}
 	if payload.UserID == 0 {
-		return "", nil, "", fmt.Errorf("%w: 登录票据缺少用户信息", ErrUnauthorized)
+		return nil, "", fmt.Errorf("%w: 登录票据缺少用户信息", ErrUnauthorized)
 	}
 	if time.Now().Unix() > payload.ExpiresAt {
 		_ = s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error
-		return "", nil, "", fmt.Errorf("%w: 登录票据已过期", ErrUnauthorized)
+		return nil, "", fmt.Errorf("%w: 登录票据已过期", ErrUnauthorized)
 	}
 
 	var user models.User
 	if err := s.db.First(&user, payload.UserID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			_ = s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error
-			return "", nil, "", fmt.Errorf("%w: 用户不存在", ErrNotFound)
+			return nil, "", fmt.Errorf("%w: 用户不存在", ErrNotFound)
 		}
-		return "", nil, "", fmt.Errorf("查询用户失败: %w", err)
+		return nil, "", fmt.Errorf("查询用户失败: %w", err)
 	}
 	if strings.EqualFold(strings.TrimSpace(user.Status), "banned") {
-		return "", nil, "", fmt.Errorf("%w: 账户已被封禁", ErrForbidden)
+		return nil, "", fmt.Errorf("%w: 账户已被封禁", ErrForbidden)
 	}
 	if user.TelegramID == nil || strings.TrimSpace(*user.TelegramID) == "" {
-		return "", nil, "", fmt.Errorf("%w: 用户未绑定 Telegram", ErrForbidden)
+		return nil, "", fmt.Errorf("%w: 用户未绑定 Telegram", ErrForbidden)
 	}
 	if payload.TelegramID != "" && strings.TrimSpace(*user.TelegramID) != payload.TelegramID {
-		return "", nil, "", fmt.Errorf("%w: 登录票据与当前账号不匹配", ErrUnauthorized)
+		return nil, "", fmt.Errorf("%w: 登录票据与当前账号不匹配", ErrUnauthorized)
 	}
 
-	token, err := generateUserJWT(user.ID, user.Role)
-	if err != nil {
-		return "", nil, "", err
-	}
 	if err := s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error; err != nil {
-		return "", nil, "", fmt.Errorf("清理登录票据失败: %w", err)
+		return nil, "", fmt.Errorf("清理登录票据失败: %w", err)
 	}
 
 	redirectURI := strings.TrimSpace(payload.RedirectURI)
 	if redirectURI == "" {
 		redirectURI = "/"
 	}
-	return token, &user, redirectURI, nil
+	loginResult, err := s.issueLoginResult(&user, ipAddress, userAgent)
+	if err != nil {
+		return nil, "", err
+	}
+	return loginResult, redirectURI, nil
+}
+
+func (s *TelegramService) issueLoginResult(user *models.User, ipAddress, userAgent string) (*LoginResult, error) {
+	if user == nil || user.ID == 0 {
+		return nil, fmt.Errorf("%w: 用户信息无效", ErrInvalidParams)
+	}
+	if s.refreshTokenService == nil {
+		s.refreshTokenService = NewRefreshTokenService(s.db)
+	}
+
+	accessToken, expiresIn, err := generateAccessToken(user.ID, user.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := s.refreshTokenService.CreateRefreshToken(user.ID, ipAddress, userAgent)
+	if err != nil {
+		return nil, fmt.Errorf("创建 refresh token 失败: %w", err)
+	}
+
+	now := time.Now()
+	if err := s.db.Model(&models.User{}).Where("id = ?", user.ID).Update("last_login_at", &now).Error; err == nil {
+		user.LastLoginAt = &now
+	}
+
+	return &LoginResult{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
+		TokenType:    "Bearer",
+		User:         user,
+	}, nil
 }
 
 // SendNotification 发送 Telegram 消息。
@@ -874,19 +904,14 @@ func generateUserJWT(userID uint, role string) (string, error) {
 	}
 
 	expireHours := cfg.JWT.ExpireTime
-	// 限制最大过期时间为 1 小时，默认 15 分钟
-	expireMinutes := 15 // 默认 15 分钟
-	if expireHours > 0 {
-		expireMinutes = expireHours * 60
-		if expireMinutes > 60 {
-			expireMinutes = 60
-		}
+	if expireHours <= 0 {
+		expireHours = 24
 	}
 
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
-		"exp":     time.Now().Add(time.Duration(expireMinutes) * time.Minute).Unix(),
+		"exp":     time.Now().Add(time.Duration(expireHours) * time.Hour).Unix(),
 		"iat":     time.Now().Unix(),
 	}
 

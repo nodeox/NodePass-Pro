@@ -12,7 +12,6 @@ import (
 	"nodepass-pro/backend/internal/config"
 	"nodepass-pro/backend/internal/services"
 
-	"github.com/golang-jwt/jwt/v5"
 	gorilla "github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -65,7 +64,7 @@ type Client struct {
 	conn      *gorilla.Conn
 	send      chan []byte
 	userID    uint
-	closeOnce sync.Once  // 确保 send channel 只关闭一次
+	closeOnce sync.Once // 确保 send channel 只关闭一次
 }
 
 // NewHub 创建并启动 WebSocket Hub。
@@ -80,6 +79,7 @@ func NewHub() *Hub {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin:     checkWebSocketOrigin,
+			Subprotocols:    []string{"bearer"},
 		},
 	}
 	go hub.run()
@@ -87,15 +87,9 @@ func NewHub() *Hub {
 }
 
 // HandleConnection 处理 WebSocket 握手并注册连接。
-func (h *Hub) HandleConnection(w http.ResponseWriter, r *http.Request) error {
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
-		return fmt.Errorf("%w: 缺少 token", services.ErrUnauthorized)
-	}
-
-	userID, err := h.verifyJWT(token)
-	if err != nil {
-		return err
+func (h *Hub) HandleConnection(w http.ResponseWriter, r *http.Request, userID uint) error {
+	if userID == 0 {
+		return fmt.Errorf("%w: 用户信息缺失", services.ErrUnauthorized)
 	}
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
@@ -296,50 +290,6 @@ func (c *Client) writePump() {
 			}
 		}
 	}
-}
-
-func (h *Hub) verifyJWT(tokenString string) (uint, error) {
-	cfg := config.GlobalConfig
-	if cfg == nil || strings.TrimSpace(cfg.JWT.Secret) == "" {
-		return 0, fmt.Errorf("%w: JWT 配置无效", services.ErrUnauthorized)
-	}
-
-	claims := jwt.MapClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("不支持的签名算法: %v", token.Header["alg"])
-		}
-		return []byte(cfg.JWT.Secret), nil
-	})
-	if err != nil || token == nil || !token.Valid {
-		return 0, fmt.Errorf("%w: token 无效或已过期", services.ErrUnauthorized)
-	}
-
-	rawUserID, exists := claims["user_id"]
-	if !exists {
-		return 0, fmt.Errorf("%w: token 缺少用户信息", services.ErrUnauthorized)
-	}
-
-	var userID uint
-	switch value := rawUserID.(type) {
-	case float64:
-		if value > 0 {
-			userID = uint(value)
-		}
-	case int64:
-		if value > 0 {
-			userID = uint(value)
-		}
-	case int:
-		if value > 0 {
-			userID = uint(value)
-		}
-	}
-	if userID == 0 {
-		return 0, fmt.Errorf("%w: token 用户信息无效", services.ErrUnauthorized)
-	}
-
-	return userID, nil
 }
 
 func buildPayload(messageType MessageType, data any) ([]byte, error) {

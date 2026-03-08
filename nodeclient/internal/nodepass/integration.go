@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +23,11 @@ const (
 	StatusStopped = "stopped"
 	// StatusError 表示规则实例异常退出。
 	StatusError = "error"
+
+	maxAutoRestartAttempts = 10
+
+	gracefulStopTimeout = 8 * time.Second
+	forcedStopTimeout   = 2 * time.Second
 )
 
 // RuleStatus 表示单条规则实例状态。
@@ -53,8 +60,12 @@ type Instance struct {
 	cmd         *exec.Cmd
 	rule        config.RuleConfig
 	doneCh      chan struct{}
+	stopCh      chan struct{}
+	stopOnce    sync.Once
+	doneClosed  bool
 	lastErr     error
 	stopFlag    bool
+	restartCnt  int
 	reportedIn  int64
 	reportedOut int64
 }
@@ -107,6 +118,7 @@ func (i *Integration) StartRule(rule config.RuleConfig) error {
 		cmd:     cmd,
 		rule:    rule,
 		doneCh:  make(chan struct{}),
+		stopCh:  make(chan struct{}),
 	}
 
 	i.mu.Lock()
@@ -138,36 +150,44 @@ func (i *Integration) StopRule(ruleID int) error {
 	}
 
 	instance.mu.Lock()
-	if instance.stopFlag {
-		instance.mu.Unlock()
-		return nil
+	alreadyStopping := instance.stopFlag
+	if !instance.stopFlag {
+		instance.stopFlag = true
+		instance.stopOnce.Do(func() {
+			close(instance.stopCh)
+		})
 	}
-	instance.stopFlag = true
 	process := instance.Process
 	doneCh := instance.doneCh
 	instance.mu.Unlock()
 
 	if process != nil {
 		if err := process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			i.logger.Printf("[WARN] 发送 SIGTERM 失败, 尝试强制终止: rule_id=%d err=%v", ruleID, err)
+			i.logger.Printf("[WARN] 发送 SIGTERM 失败, rule_id=%d err=%v", ruleID, err)
 		}
+	} else if !alreadyStopping {
+		i.logger.Printf("[INFO] 规则进程已不存在，等待清理: rule_id=%d", ruleID)
 	}
 
+	stopped := false
 	select {
 	case <-doneCh:
-	case <-time.After(8 * time.Second):
+		stopped = true
+	case <-time.After(gracefulStopTimeout):
 		if process != nil {
 			_ = process.Kill()
 		}
 		select {
 		case <-doneCh:
-		case <-time.After(2 * time.Second):
+			stopped = true
+		case <-time.After(forcedStopTimeout):
 		}
 	}
+	if !stopped {
+		return fmt.Errorf("停止规则 %d 超时", ruleID)
+	}
 
-	i.mu.Lock()
-	delete(i.instances, ruleID)
-	i.mu.Unlock()
+	i.removeInstance(instance)
 
 	i.logger.Printf("[INFO] 规则已停止: rule_id=%d", ruleID)
 	return nil
@@ -179,6 +199,21 @@ func (i *Integration) RestartRule(ruleID int, rule config.RuleConfig) error {
 		return err
 	}
 	return i.StartRule(rule)
+}
+
+// RestartRuleWithRollback 重启规则，失败时回滚到旧配置。
+func (i *Integration) RestartRuleWithRollback(ruleID int, oldRule config.RuleConfig, newRule config.RuleConfig) error {
+	if err := i.StopRule(ruleID); err != nil {
+		return err
+	}
+	if err := i.StartRule(newRule); err != nil {
+		rollbackErr := i.StartRule(oldRule)
+		if rollbackErr != nil {
+			return fmt.Errorf("重启规则 %d 失败: %v；回滚旧配置失败: %w", ruleID, err, rollbackErr)
+		}
+		return fmt.Errorf("重启规则 %d 失败: %w（已回滚旧配置）", ruleID, err)
+	}
+	return nil
 }
 
 // GetStatus 查询单条规则状态。
@@ -301,25 +336,192 @@ func (i *Integration) SnapshotRules() map[int]config.RuleConfig {
 }
 
 func (i *Integration) watchProcessExit(instance *Instance) {
-	waitErr := instance.cmd.Wait()
+	for {
+		instance.mu.RLock()
+		cmd := instance.cmd
+		instance.mu.RUnlock()
 
-	instance.mu.Lock()
-	defer instance.mu.Unlock()
+		if cmd != nil {
+			waitErr := cmd.Wait()
 
-	instance.Process = nil
-	instance.cmd = nil
-	instance.lastErr = waitErr
+			shouldStop := false
+			attempt := 0
+			instance.mu.Lock()
+			instance.Process = nil
+			instance.cmd = nil
+			if instance.stopFlag {
+				instance.Status = StatusStopped
+				instance.lastErr = nil
+				shouldStop = true
+			} else {
+				instance.lastErr = waitErr
+				if waitErr != nil {
+					instance.Status = StatusError
+					i.logger.Printf("[WARN] 规则实例异常退出: rule_id=%d err=%v", instance.RuleID, waitErr)
+				} else {
+					instance.Status = StatusStopped
+					i.logger.Printf("[WARN] 规则实例退出: rule_id=%d", instance.RuleID)
+				}
+				instance.restartCnt++
+				attempt = instance.restartCnt
+			}
+			instance.mu.Unlock()
 
-	if instance.stopFlag {
-		instance.Status = StatusStopped
-	} else if waitErr != nil {
-		instance.Status = StatusError
-		i.logger.Printf("[WARN] 规则实例异常退出: rule_id=%d err=%v", instance.RuleID, waitErr)
-	} else {
-		instance.Status = StatusStopped
+			if shouldStop {
+				i.closeDoneOnce(instance)
+				i.removeInstance(instance)
+				return
+			}
+			if !i.restartInstance(instance, attempt) {
+				return
+			}
+			continue
+		}
+
+		if i.shouldStopInstance(instance) {
+			i.markInstanceStopped(instance)
+			i.closeDoneOnce(instance)
+			i.removeInstance(instance)
+			return
+		}
+
+		instance.mu.Lock()
+		instance.restartCnt++
+		attempt := instance.restartCnt
+		instance.mu.Unlock()
+
+		if !i.restartInstance(instance, attempt) {
+			return
+		}
+	}
+}
+
+func (i *Integration) restartInstance(instance *Instance, attempt int) bool {
+	if attempt <= 0 {
+		attempt = 1
 	}
 
+	delay := restartBackoff(attempt)
+	i.logger.Printf("[INFO] 尝试自动恢复规则: rule_id=%d attempt=%d delay=%s", instance.RuleID, attempt, delay)
+
+	instance.mu.RLock()
+	stopCh := instance.stopCh
+	rule := instance.rule
+	instance.mu.RUnlock()
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-stopCh:
+		i.markInstanceStopped(instance)
+		i.closeDoneOnce(instance)
+		i.removeInstance(instance)
+		return false
+	case <-timer.C:
+	}
+
+	if i.shouldStopInstance(instance) {
+		i.markInstanceStopped(instance)
+		i.closeDoneOnce(instance)
+		i.removeInstance(instance)
+		return false
+	}
+
+	cmd, err := buildCommand(rule)
+	if err != nil {
+		return i.handleRestartFailure(instance, attempt, fmt.Errorf("构建规则命令失败: %w", err))
+	}
+
+	if err := cmd.Start(); err != nil {
+		return i.handleRestartFailure(instance, attempt, fmt.Errorf("启动规则进程失败: %w", err))
+	}
+
+	instance.mu.Lock()
+	if instance.stopFlag {
+		instance.mu.Unlock()
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = cmd.Process.Kill()
+		i.markInstanceStopped(instance)
+		i.closeDoneOnce(instance)
+		i.removeInstance(instance)
+		return false
+	}
+	instance.Process = cmd.Process
+	instance.cmd = cmd
+	instance.Status = StatusRunning
+	instance.lastErr = nil
+	instance.mu.Unlock()
+
+	i.logger.Printf("[INFO] 规则自动恢复成功: rule_id=%d pid=%d", instance.RuleID, cmd.Process.Pid)
+	return true
+}
+
+func (i *Integration) handleRestartFailure(instance *Instance, attempt int, err error) bool {
+	instance.mu.Lock()
+	instance.Status = StatusError
+	instance.lastErr = err
+	reachedLimit := attempt >= maxAutoRestartAttempts
+	instance.mu.Unlock()
+
+	if reachedLimit {
+		i.logger.Printf("[ERROR] 规则自动恢复达到上限，已暂停自动恢复: rule_id=%d attempts=%d err=%v", instance.RuleID, attempt, err)
+		i.closeDoneOnce(instance)
+		return false
+	}
+
+	i.logger.Printf("[WARN] 自动恢复规则失败: rule_id=%d attempt=%d err=%v", instance.RuleID, attempt, err)
+	return true
+}
+
+func (i *Integration) shouldStopInstance(instance *Instance) bool {
+	instance.mu.RLock()
+	defer instance.mu.RUnlock()
+	return instance.stopFlag
+}
+
+func (i *Integration) markInstanceStopped(instance *Instance) {
+	instance.mu.Lock()
+	instance.Process = nil
+	instance.cmd = nil
+	instance.Status = StatusStopped
+	instance.lastErr = nil
+	instance.mu.Unlock()
+}
+
+func (i *Integration) closeDoneOnce(instance *Instance) {
+	instance.mu.Lock()
+	defer instance.mu.Unlock()
+	if instance.doneClosed {
+		return
+	}
 	close(instance.doneCh)
+	instance.doneClosed = true
+}
+
+func (i *Integration) removeInstance(instance *Instance) {
+	if instance == nil {
+		return
+	}
+
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	current, exists := i.instances[instance.RuleID]
+	if !exists || current != instance {
+		return
+	}
+	delete(i.instances, instance.RuleID)
+}
+
+func restartBackoff(attempt int) time.Duration {
+	if attempt <= 0 {
+		return time.Second
+	}
+	shift := attempt - 1
+	if shift > 5 {
+		shift = 5
+	}
+	return time.Duration(1<<shift) * time.Second
 }
 
 func (i *Integration) refreshTrafficCounters(instance *Instance) {
@@ -342,6 +544,25 @@ func buildCommand(rule config.RuleConfig) (*exec.Cmd, error) {
 	binary := os.Getenv("NODEPASS_BIN")
 	if binary == "" {
 		binary = "nodepass"
+	} else {
+		normalized := strings.TrimSpace(binary)
+		if normalized == "" {
+			return nil, fmt.Errorf("NODEPASS_BIN 不能为空")
+		}
+		if !filepath.IsAbs(normalized) {
+			return nil, fmt.Errorf("NODEPASS_BIN 必须为绝对路径: %s", normalized)
+		}
+		info, err := os.Stat(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("NODEPASS_BIN 无法访问: %w", err)
+		}
+		if info.IsDir() {
+			return nil, fmt.Errorf("NODEPASS_BIN 不能是目录: %s", normalized)
+		}
+		if info.Mode()&0o111 == 0 {
+			return nil, fmt.Errorf("NODEPASS_BIN 不可执行: %s", normalized)
+		}
+		binary = normalized
 	}
 
 	listenAddr := fmt.Sprintf("%s:%d", rule.Listen.Host, rule.Listen.Port)

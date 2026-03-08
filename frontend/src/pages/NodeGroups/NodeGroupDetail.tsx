@@ -170,7 +170,7 @@ const NodeGroupDetail = () => {
     }
   }
 
-  const handleRestartNode = async (instance: NodeInstance) => {
+  const handleRestartNode = useCallback(async (instance: NodeInstance) => {
     try {
       await nodeInstanceApi.restart(instance.id)
       message.success(`节点 ${instance.name} 已重启`)
@@ -178,9 +178,9 @@ const NodeGroupDetail = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '重启节点失败'))
     }
-  }
+  }, [loadData])
 
-  const handleToggleNode = async (instance: NodeInstance) => {
+  const handleToggleNode = useCallback(async (instance: NodeInstance) => {
     try {
       await nodeInstanceApi.update(instance.id, { is_enabled: !instance.is_enabled })
       message.success(instance.is_enabled ? '节点已禁用' : '节点已启用')
@@ -188,9 +188,9 @@ const NodeGroupDetail = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '更新节点状态失败'))
     }
-  }
+  }, [loadData])
 
-  const handleDeleteNode = (instance: NodeInstance) => {
+  const handleDeleteNode = useCallback((instance: NodeInstance) => {
     Modal.confirm({
       title: '删除节点实例',
       content: `确认删除节点 ${instance.name} 吗？`,
@@ -207,9 +207,9 @@ const NodeGroupDetail = () => {
         }
       },
     })
-  }
+  }, [loadData])
 
-  const handleTunnelToggle = async (tunnel: Tunnel) => {
+  const handleTunnelToggle = useCallback(async (tunnel: Tunnel) => {
     try {
       if (tunnel.status === 'running') {
         await tunnelApi.stop(tunnel.id)
@@ -222,7 +222,7 @@ const NodeGroupDetail = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '更新隧道状态失败'))
     }
-  }
+  }, [loadData])
 
   const relatedExitGroupIDs = useMemo(
     () =>
@@ -264,7 +264,7 @@ const NodeGroupDetail = () => {
     }
   }
 
-  const handleToggleRelation = async (relation: NodeGroupRelation) => {
+  const handleToggleRelation = useCallback(async (relation: NodeGroupRelation) => {
     try {
       await nodeGroupApi.toggleRelation(relation.id)
       message.success(relation.is_enabled ? '关联已禁用' : '关联已启用')
@@ -272,9 +272,9 @@ const NodeGroupDetail = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '切换关联状态失败'))
     }
-  }
+  }, [loadData])
 
-  const handleDeleteRelation = async (relation: NodeGroupRelation) => {
+  const handleDeleteRelation = useCallback(async (relation: NodeGroupRelation) => {
     Modal.confirm({
       title: '删除关联',
       content: '删除后该入口组将不能再使用此出口组，确认继续吗？',
@@ -291,7 +291,7 @@ const NodeGroupDetail = () => {
         }
       },
     })
-  }
+  }, [loadData])
 
   const summary = useMemo(() => {
     const totalNodes = group?.stats?.total_nodes ?? nodes.length
@@ -386,7 +386,7 @@ const NodeGroupDetail = () => {
         ),
       },
     ],
-    [],
+    [handleDeleteNode, handleRestartNode, handleToggleNode],
   )
 
   const tunnelColumns = useMemo<TableProps<Tunnel>['columns']>(
@@ -427,7 +427,7 @@ const NodeGroupDetail = () => {
         ),
       },
     ],
-    [buildTunnelDetailPath, navigate],
+    [buildTunnelDetailPath, handleTunnelToggle, navigate],
   )
 
   const relationColumns = useMemo<TableProps<NodeGroupRelation>['columns']>(
@@ -478,7 +478,7 @@ const NodeGroupDetail = () => {
           ),
       },
     ],
-    [group?.type],
+    [group?.type, handleDeleteRelation, handleToggleRelation],
   )
 
   const tabItems = useMemo<TabsProps['items']>(() => {

@@ -26,7 +26,13 @@ func (h *WebSocketHandler) Handle(c *gin.Context) {
 		return
 	}
 
-	if err := h.hub.HandleConnection(c.Writer, c.Request); err != nil {
+	userID, _, ok := getUserContext(c)
+	if !ok || userID == 0 {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	if err := h.hub.HandleConnection(c.Writer, c.Request, userID); err != nil {
 		writeServiceError(c, err, "WEBSOCKET_CONNECT_FAILED")
 		return
 	}

@@ -4,7 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import {
   authApi,
   clearAuthStorage,
-  setAuthToken,
+  setAuthSession,
 } from '../services/api'
 import type { LoginPayload, RegisterPayload, User } from '../types'
 
@@ -39,7 +39,12 @@ export const useAuthStore = create<AuthState>()(
             user: result.user,
             isAuthenticated: true,
           })
-          setAuthToken(result.token)
+          setAuthSession({
+            accessToken: result.token,
+            refreshToken: result.refreshToken ?? null,
+            expiresIn: result.expiresIn,
+            user: result.user,
+          })
         } finally {
           set({ isLoading: false })
         }
@@ -79,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
             token,
             isAuthenticated: true,
           })
-        } catch (_error) {
+        } catch {
           get().logout()
         } finally {
           set({ isLoading: false })
@@ -87,8 +92,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshToken: async () => {
-        const token = get().token
-        if (!token) {
+        if (!get().token) {
           return null
         }
 
@@ -101,9 +105,14 @@ export const useAuthStore = create<AuthState>()(
           }
 
           set({ token: nextToken, isAuthenticated: true })
-          setAuthToken(nextToken)
+          setAuthSession({
+            accessToken: nextToken,
+            refreshToken: result.refreshToken,
+            expiresIn: result.expiresIn,
+            user: result.user,
+          })
           return nextToken
-        } catch (_error) {
+        } catch {
           get().logout()
           return null
         }

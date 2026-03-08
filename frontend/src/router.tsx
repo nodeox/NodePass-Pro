@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { Spin } from 'antd'
 import { useEffect } from 'react'
 import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom'

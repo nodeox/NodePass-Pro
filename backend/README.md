@@ -20,7 +20,6 @@ NodePass Pro 后端基于 Go + Gin + Gorm，提供节点、规则、流量、VIP
 ```yaml
 license:
   enabled: true
-  verify_url: "https://license.nodepass.pro/api/v1/license/verify"
   license_key: "NP-XXXX-XXXX-XXXX"
   machine_id: ""
   verify_interval: 300

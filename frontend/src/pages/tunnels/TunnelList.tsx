@@ -374,7 +374,7 @@ const TunnelList = () => {
 
   const openEditModal = (tunnel: Tunnel) => {
     setEditingTunnel(tunnel)
-    form.setFieldsValue({
+    const values: Partial<TunnelFormValues> = {
       name: tunnel.name,
       description: tunnel.description || undefined,
       protocol: tunnel.protocol,
@@ -389,13 +389,14 @@ const TunnelList = () => {
       enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
       forward_targets: tunnel.config?.forward_targets || [],
       protocol_config: tunnel.config?.protocol_config || undefined,
-    } as any)
+    }
+    form.setFieldsValue(values)
     setOpen(true)
   }
 
   const openCopyModal = (tunnel: Tunnel) => {
     setEditingTunnel(null)
-    form.setFieldsValue({
+    const values: Partial<TunnelFormValues> = {
       name: `${tunnel.name} (副本)`,
       description: tunnel.description || undefined,
       protocol: tunnel.protocol,
@@ -410,7 +411,8 @@ const TunnelList = () => {
       enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
       forward_targets: tunnel.config?.forward_targets || [],
       protocol_config: tunnel.config?.protocol_config || undefined,
-    } as any)
+    }
+    form.setFieldsValue(values)
     setOpen(true)
   }
 
@@ -915,7 +917,7 @@ const TunnelList = () => {
             </Card>
           )}
 
-          {protocol && <ProtocolConfig protocol={protocol} form={form} />}
+          {protocol && <ProtocolConfig protocol={protocol} />}
         </Form>
       </Modal>
     </PageContainer>

@@ -400,7 +400,7 @@ const UserManage = () => {
       URL.revokeObjectURL(url)
 
       message.success('导出成功')
-    } catch (error) {
+    } catch {
       message.error('导出失败')
     }
   }

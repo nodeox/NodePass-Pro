@@ -26,7 +26,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		tokenString, err := extractBearerToken(c.GetHeader("Authorization"))
 		if err != nil {
 			if isWebSocketUpgradeRequest(c) {
-				tokenString = strings.TrimSpace(c.Query("token"))
+				tokenString = extractWebSocketProtocolToken(c.GetHeader("Sec-WebSocket-Protocol"))
 				if tokenString == "" {
 					utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未提供认证令牌")
 					c.Abort()
@@ -78,6 +78,28 @@ func isWebSocketUpgradeRequest(c *gin.Context) bool {
 
 	connection := strings.TrimSpace(strings.ToLower(c.GetHeader("Connection")))
 	return strings.Contains(connection, "upgrade")
+}
+
+func extractWebSocketProtocolToken(protocolHeader string) string {
+	if strings.TrimSpace(protocolHeader) == "" {
+		return ""
+	}
+
+	parts := strings.Split(protocolHeader, ",")
+	trimmed := make([]string, 0, len(parts))
+	for _, item := range parts {
+		value := strings.TrimSpace(item)
+		if value != "" {
+			trimmed = append(trimmed, value)
+		}
+	}
+	if len(trimmed) < 2 {
+		return ""
+	}
+	if !strings.EqualFold(trimmed[0], "bearer") {
+		return ""
+	}
+	return trimmed[1]
 }
 
 func extractBearerToken(authorization string) (string, error) {

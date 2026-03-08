@@ -135,7 +135,7 @@ const NodeStatus = () => {
     }
   }, [source])
 
-  const runAction = async (key: string, action: () => Promise<void>, successText: string) => {
+  const runAction = useCallback(async (key: string, action: () => Promise<void>, successText: string) => {
     setActionLoading(key)
     try {
       await action()
@@ -146,9 +146,9 @@ const NodeStatus = () => {
     } finally {
       setActionLoading(null)
     }
-  }
+  }, [loadData])
 
-  const restartNode = (record: NodeStatusRow) => {
+  const restartNode = useCallback((record: NodeStatusRow) => {
     if (!record.editable) {
       return
     }
@@ -159,9 +159,9 @@ const NodeStatus = () => {
       },
       `节点 ${record.name} 已重启`,
     )
-  }
+  }, [runAction])
 
-  const toggleNode = (record: NodeStatusRow) => {
+  const toggleNode = useCallback((record: NodeStatusRow) => {
     if (!record.editable) {
       return
     }
@@ -172,9 +172,9 @@ const NodeStatus = () => {
       },
       record.is_enabled ? '节点已禁用' : '节点已启用',
     )
-  }
+  }, [runAction])
 
-  const deleteNode = (record: NodeStatusRow) => {
+  const deleteNode = useCallback((record: NodeStatusRow) => {
     if (!record.editable) {
       return
     }
@@ -185,7 +185,7 @@ const NodeStatus = () => {
       },
       '节点实例已删除',
     )
-  }
+  }, [runAction])
 
   const columns = useMemo<TableProps<NodeStatusRow>['columns']>(
     () => [
@@ -296,7 +296,7 @@ const NodeStatus = () => {
         },
       },
     ],
-    [actionLoading],
+    [actionLoading, deleteNode, restartNode, toggleNode],
   )
 
   return (

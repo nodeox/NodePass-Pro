@@ -94,16 +94,17 @@ func (h *TelegramHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, user, verifyErr := h.telegramService.VerifyWidgetLogin(data)
+	loginResult, verifyErr := h.telegramService.VerifyWidgetLogin(
+		data,
+		c.ClientIP(),
+		c.GetHeader("User-Agent"),
+	)
 	if verifyErr != nil {
 		writeServiceError(c, verifyErr, "TELEGRAM_LOGIN_FAILED")
 		return
 	}
 
-	utils.Success(c, gin.H{
-		"token": token,
-		"user":  buildTelegramLoginUser(user),
-	})
+	utils.Success(c, buildTelegramLoginPayload(loginResult, ""))
 }
 
 // GenerateSSOURL POST /api/v1/telegram/sso-url
@@ -146,17 +147,17 @@ func (h *TelegramHandler) SSOLogin(c *gin.Context) {
 		return
 	}
 
-	token, user, redirectURI, err := h.telegramService.ConsumeSSOTicket(ticket)
+	loginResult, redirectURI, err := h.telegramService.ConsumeSSOTicket(
+		ticket,
+		c.ClientIP(),
+		c.GetHeader("User-Agent"),
+	)
 	if err != nil {
 		writeServiceError(c, err, "TELEGRAM_SSO_LOGIN_FAILED")
 		return
 	}
 
-	utils.Success(c, gin.H{
-		"token":        token,
-		"user":         buildTelegramLoginUser(user),
-		"redirect_uri": redirectURI,
-	})
+	utils.Success(c, buildTelegramLoginPayload(loginResult, redirectURI))
 }
 
 // NotifySelf POST /api/v1/telegram/notify
@@ -249,4 +250,23 @@ func buildTelegramLoginUser(user *models.User) gin.H {
 		"telegram_id":       user.TelegramID,
 		"telegram_username": user.TelegramUsername,
 	}
+}
+
+func buildTelegramLoginPayload(result *services.LoginResult, redirectURI string) gin.H {
+	if result == nil {
+		return gin.H{}
+	}
+	payload := gin.H{
+		"token":         result.AccessToken,
+		"access_token":  result.AccessToken,
+		"refresh_token": result.RefreshToken,
+		"expires_in":    result.ExpiresIn,
+		"token_type":    result.TokenType,
+		"user":          buildTelegramLoginUser(result.User),
+	}
+	trimmedRedirect := strings.TrimSpace(redirectURI)
+	if trimmedRedirect != "" {
+		payload["redirect_uri"] = trimmedRedirect
+	}
+	return payload
 }

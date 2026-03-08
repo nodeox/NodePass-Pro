@@ -99,7 +99,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
   --email admin@example.com --admin-username admin --admin-email admin@example.com --admin-password 'YourStrongPassword'
 ```
 
-授权接口可通过 `--license-server` 覆盖（默认：`https://license.nodepass.pro/api/v1/license/verify`）。
+授权接口地址由系统内置，不对外暴露也不支持命令行覆盖。
 
 1) 仅部署核心服务（PostgreSQL + Redis + Backend + Frontend）
 

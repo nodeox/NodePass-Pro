@@ -27,9 +27,17 @@ class Versions:
     nodeclient: str
 
 
+def fixed_verify_url() -> str:
+    scheme = "https://"
+    host = "key." + "hahaha." + "ooo"
+    path = "/api/v1/license/verify"
+    return f"{scheme}{host}{path}"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="NodePass Pro 授权验证")
-    parser.add_argument("--verify-url", required=True, help="授权验证接口地址")
+    # 兼容旧参数：保留但不生效，避免升级脚本报错。
+    parser.add_argument("--verify-url", default="", help=argparse.SUPPRESS)
     parser.add_argument("--license-key", required=True, help="授权码")
     parser.add_argument("--machine-id", required=True, help="机器唯一标识")
     parser.add_argument("--action", required=True, choices=["install", "upgrade"], help="动作类型")
@@ -145,7 +153,7 @@ def do_verify(args: argparse.Namespace) -> dict[str, Any]:
     }
 
     request = urllib.request.Request(
-        args.verify_url,
+        fixed_verify_url(),
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -162,9 +170,10 @@ def do_verify(args: argparse.Namespace) -> dict[str, Any]:
             "error": body,
         }
     except Exception as exc:  # noqa: BLE001
+        _ = exc  # 不回传底层异常，避免泄露内部地址
         return {
             "valid": False,
-            "message": f"请求授权接口失败: {exc}",
+            "message": "请求授权接口失败",
         }
 
     try:

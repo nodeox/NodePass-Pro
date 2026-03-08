@@ -4,7 +4,6 @@ import type { Tunnel } from '../../../types/nodeGroup'
 
 interface ProtocolConfigProps {
   protocol: Tunnel['protocol']
-  form?: any
 }
 
 const ProtocolConfig = ({ protocol }: ProtocolConfigProps) => {

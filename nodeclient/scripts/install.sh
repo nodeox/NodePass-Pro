@@ -125,6 +125,16 @@ validate_node_id() {
   fi
 }
 
+validate_group_id() {
+  if [[ -z "${GROUP_ID}" ]]; then
+    return 0
+  fi
+
+  if [[ ! "${GROUP_ID}" =~ ^[1-9][0-9]*$ ]]; then
+    fail "--group-id 必须是大于 0 的整数"
+  fi
+}
+
 validate_node_role() {
   case "${NODE_ROLE}" in
     entry|exit|both)
@@ -401,6 +411,7 @@ hub_url: "${HUB_URL}"
 service_name: "${SERVICE_NAME}"
 node_id: "${NODE_ID}"
 group_id: ${GROUP_ID}
+node_role: "${NODE_ROLE}"
 node_token: "${TOKEN}"
 connection_address: "${CONNECT_HOST}"
 cache_path: "${CACHE_DIR}/config.json"
@@ -451,6 +462,8 @@ do_install() {
   [[ -n "${NODE_ID}" ]] || fail "--node-id 为必填参数"
   [[ -n "${GROUP_ID}" ]] || fail "--group-id 为必填参数"
   [[ -n "${TOKEN}" ]] || fail "--token 为必填参数"
+
+  validate_group_id
 
   detect_platform
 

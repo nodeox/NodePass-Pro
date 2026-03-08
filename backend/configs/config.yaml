@@ -64,7 +64,6 @@ telegram:
 
 license:
   enabled: false
-  verify_url: "https://license.nodepass.pro/api/v1/license/verify"
   license_key: ""
   machine_id: ""
   # 必填（license.enabled=true 时）：面板访问域名（如 panel.example.com）
