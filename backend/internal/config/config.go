@@ -19,9 +19,11 @@ type Config struct {
 
 // ServerConfig 服务配置。
 type ServerConfig struct {
-	Port           string   `mapstructure:"port"`
-	Mode           string   `mapstructure:"mode"`
-	AllowedOrigins []string `mapstructure:"allowed_origins"`
+	Port                  string   `mapstructure:"port"`
+	Mode                  string   `mapstructure:"mode"`
+	AllowedOrigins        []string `mapstructure:"allowed_origins"`
+	TrustForwardedHeaders bool     `mapstructure:"trust_forwarded_headers"` // 是否信任 X-Forwarded-* 头
+	StrictCSRF            bool     `mapstructure:"strict_csrf"`             // 是否启用严格 CSRF 模式（不跳过无 Origin/Referer 的请求）
 }
 
 // DatabaseConfig 数据库配置。
@@ -33,6 +35,7 @@ type DatabaseConfig struct {
 	Password string `mapstructure:"password"`
 	DBName   string `mapstructure:"db_name"`
 	DSN      string `mapstructure:"dsn"`
+	SSLMode  string `mapstructure:"ssl_mode"` // PostgreSQL SSL 模式: disable, require, verify-ca, verify-full
 }
 
 // RedisConfig Redis 缓存配置。

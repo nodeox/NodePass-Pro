@@ -11,8 +11,8 @@ import {
   Switch,
   message,
 } from 'antd'
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { nodeGroupApi } from '../../services/nodeGroupApi'
 import type {
@@ -46,10 +46,14 @@ const stepItems = [
   { title: '高级配置' },
 ]
 
-const CreateNodeGroup = () => {
+const EditNodeGroup = () => {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const groupID = Number(id)
+
   const [form] = Form.useForm<FormValues>()
   const [currentStep, setCurrentStep] = useState<number>(0)
+  const [loading, setLoading] = useState<boolean>(false)
   const [submitting, setSubmitting] = useState<boolean>(false)
 
   const groupType = Form.useWatch('type', form) ?? 'entry'
@@ -71,6 +75,41 @@ const CreateNodeGroup = () => {
     }),
     [],
   )
+
+  const loadDetail = useCallback(async () => {
+    if (!Number.isFinite(groupID) || groupID <= 0) {
+      message.error('无效的节点组 ID')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const detail = await nodeGroupApi.get(groupID)
+      form.setFieldsValue({
+        name: detail.name ?? '',
+        type: detail.type,
+        description: detail.description ?? '',
+        allowed_protocols: detail.config?.allowed_protocols ?? ['tcp'],
+        port_start: detail.config?.port_range?.start ?? 1,
+        port_end: detail.config?.port_range?.end ?? 65535,
+        require_exit_group: detail.config?.entry_config?.require_exit_group ?? true,
+        traffic_multiplier: detail.config?.entry_config?.traffic_multiplier ?? 1,
+        dns_load_balance: detail.config?.entry_config?.dns_load_balance ?? false,
+        load_balance_strategy:
+          detail.config?.exit_config?.load_balance_strategy ?? 'round_robin',
+        health_check_interval: detail.config?.exit_config?.health_check_interval ?? 30,
+        health_check_timeout: detail.config?.exit_config?.health_check_timeout ?? 5,
+      })
+    } catch (error) {
+      message.error(getErrorMessage(error, '加载节点组详情失败'))
+    } finally {
+      setLoading(false)
+    }
+  }, [form, groupID])
+
+  useEffect(() => {
+    void loadDetail()
+  }, [loadDetail])
 
   const handleNext = async () => {
     try {
@@ -97,6 +136,11 @@ const CreateNodeGroup = () => {
   }
 
   const handleSubmit = async () => {
+    if (!Number.isFinite(groupID) || groupID <= 0) {
+      message.error('无效的节点组 ID')
+      return
+    }
+
     try {
       await form.validateFields()
       setSubmitting(true)
@@ -110,9 +154,8 @@ const CreateNodeGroup = () => {
 
       const description = safeTrim(values.description)
 
-      const payload: CreateNodeGroupPayload = {
+      const payload: Partial<CreateNodeGroupPayload> = {
         name,
-        type: values.type,
         description: description || undefined,
         config: {
           allowed_protocols: values.allowed_protocols,
@@ -138,14 +181,14 @@ const CreateNodeGroup = () => {
         },
       }
 
-      const created = await nodeGroupApi.create(payload)
-      message.success('节点组创建成功')
-      navigate(`/node-groups/${created.id}`)
+      await nodeGroupApi.update(groupID, payload)
+      message.success('节点组更新成功')
+      navigate(`/node-groups/${groupID}`)
     } catch (error) {
       if (error instanceof Error && error.message.includes('out of date')) {
         return
       }
-      message.error(getErrorMessage(error, '创建节点组失败'))
+      message.error(getErrorMessage(error, '更新节点组失败'))
     } finally {
       setSubmitting(false)
     }
@@ -154,9 +197,10 @@ const CreateNodeGroup = () => {
   return (
     <Card
       className="shadow-sm"
-      title="创建节点组"
+      loading={loading}
+      title="编辑节点组"
       extra={
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/node-groups')}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/node-groups/${groupID}`)}>
           返回
         </Button>
       }
@@ -189,6 +233,7 @@ const CreateNodeGroup = () => {
                 rules={[{ required: true, message: '请选择节点组类型' }]}
               >
                 <Select
+                  disabled
                   options={[
                     { label: '入口组', value: 'entry' },
                     { label: '出口组', value: 'exit' },
@@ -349,7 +394,7 @@ const CreateNodeGroup = () => {
             </Button>
           ) : (
             <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
-              创建节点组
+              保存修改
             </Button>
           )}
         </Space>
@@ -358,4 +403,4 @@ const CreateNodeGroup = () => {
   )
 }
 
-export default CreateNodeGroup
+export default EditNodeGroup

@@ -40,7 +40,7 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		}
 		dir := filepath.Dir(dsn)
 		if dir != "." {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return nil, fmt.Errorf("创建 sqlite 目录失败: %w", err)
 			}
 		}
@@ -55,8 +55,12 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	case "postgres", "postgresql":
 		dsn = cfg.DSN
 		if dsn == "" {
-			dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-				cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
+			sslMode := cfg.SSLMode
+			if sslMode == "" {
+				sslMode = "require" // 默认要求 SSL 连接
+			}
+			dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+				cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, sslMode)
 		}
 		dialector = postgres.Open(dsn)
 	default:

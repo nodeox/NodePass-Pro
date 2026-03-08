@@ -247,7 +247,7 @@ func (h *NodeGroupHandler) GenerateDeployCommand(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.GenerateDeployCommand(userID, id, req)
+	result, err := h.service.GenerateDeployCommand(userID, id, req, inferPanelURL(c))
 	if err != nil {
 		writeNodeGroupServiceError(c, err, "GENERATE_DEPLOY_COMMAND_FAILED")
 		return

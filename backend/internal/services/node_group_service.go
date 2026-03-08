@@ -434,7 +434,7 @@ func (s *NodeGroupService) GetStats(userID uint, id uint) (*models.NodeGroupStat
 }
 
 // GenerateDeployCommand 生成部署命令并创建离线节点实例。
-func (s *NodeGroupService) GenerateDeployCommand(userID uint, groupID uint, req *DeployNodeRequest) (*DeployCommandResponse, error) {
+func (s *NodeGroupService) GenerateDeployCommand(userID uint, groupID uint, req *DeployNodeRequest, panelURL string) (*DeployCommandResponse, error) {
 	group, err := s.Get(userID, groupID)
 	if err != nil {
 		return nil, err
@@ -479,7 +479,10 @@ func (s *NodeGroupService) GenerateDeployCommand(userID uint, groupID uint, req 
 		return nil, err
 	}
 
-	hubURL := resolveHubURL("")
+	hubURL, err := resolveHubURL(panelURL)
+	if err != nil {
+		return nil, err
+	}
 	scriptURL := strings.TrimRight(hubURL, "/") + "/nodeclient-install.sh"
 
 	var cmd strings.Builder
@@ -1417,18 +1420,18 @@ func normalizeOptionalStringNG(v *string) *string {
 	return &trimmed
 }
 
-func resolveHubURL(raw string) string {
+func resolveHubURL(raw string) (string, error) {
 	candidate := strings.TrimSpace(raw)
 	if candidate == "" {
 		candidate = strings.TrimSpace(os.Getenv("NODEPASS_HUB_URL"))
 	}
 	if candidate == "" {
-		candidate = "http://127.0.0.1:8080"
+		return "", fmt.Errorf("%w: 无法确定 hub_url，请通过域名访问面板或设置 NODEPASS_HUB_URL", ErrInvalidParams)
 	}
 	if !strings.Contains(candidate, "://") {
 		candidate = "https://" + candidate
 	}
-	return strings.TrimRight(candidate, "/")
+	return strings.TrimRight(candidate, "/"), nil
 }
 
 func shellEscapeNG(value string) string {

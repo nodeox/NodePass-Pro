@@ -15,6 +15,17 @@ server:
     # - "https://panel.example.com"
     # - "*.example.com"
 
+  # 是否信任 X-Forwarded-* 头（默认：false）
+  # 仅在后端位于反向代理（如 Nginx、Caddy）后时启用
+  # 直接暴露后端时必须设置为 false，否则存在安全风险
+  trust_forwarded_headers: false
+
+  # 是否启用严格 CSRF 模式（默认：false）
+  # true: 拒绝所有无 Origin/Referer 的不安全请求（POST/PUT/DELETE/PATCH）
+  # false: 允许无 Origin/Referer 的请求跳过 CSRF（便于 CLI/脚本调用）
+  # 生产环境建议设置为 true
+  strict_csrf: false
+
 database:
   type: "postgres" # sqlite / mysql / postgres
   host: "127.0.0.1"
@@ -22,7 +33,11 @@ database:
   user: "postgres"
   password: "postgres"
   db_name: "nodepass_panel"
-  dsn: "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=nodepass_panel sslmode=disable TimeZone=Asia/Shanghai" # PostgreSQL 示例；可留空并使用上面的 host/port/user/password/db_name 组合
+  # ssl_mode: PostgreSQL SSL 模式 (disable / require / verify-ca / verify-full)
+  # 默认: require (生产环境推荐)
+  # 开发环境可设置为 disable
+  ssl_mode: "disable" # 开发环境使用 disable，生产环境请改为 require 或 verify-full
+  dsn: "" # 可选：完整的 DSN 连接字符串，如果设置则忽略上面的 host/port/user 等配置
 
 redis:
   enabled: true
@@ -33,8 +48,14 @@ redis:
   default_ttl: 300 # 秒
 
 jwt:
+  # JWT 密钥：用于签名和验证 JWT token
+  # 安全要求：
+  # - 长度至少 32 字符（推荐 64 字符以上）
+  # - 使用随机字符串，包含大小写字母、数字、特殊字符
+  # - 生产环境必须修改默认值
+  # 生成示例：openssl rand -base64 48
   secret: "change-this-secret-in-production"
-  expire_time: 168 # 小时
+  expire_time: 168 # 小时（默认 7 天）
 
 telegram:
   bot_token: ""

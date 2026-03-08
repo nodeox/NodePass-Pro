@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nodepass-pro/backend/internal/utils"
@@ -13,11 +15,11 @@ import (
 
 type visitor struct {
 	limiter  *rate.Limiter
-	lastSeen time.Time
+	lastSeen int64 // 使用 int64 存储 Unix 纳秒时间戳，配合 atomic 操作
 }
 
-// IPRateLimiter 基于 IP 的令牌桶限流器（使用 sync.Map 优化并发性能）。
-type IPRateLimiter struct {
+// KeyRateLimiter 基于 key 的令牌桶限流器（使用 sync.Map 优化并发性能）。
+type KeyRateLimiter struct {
 	visitors        sync.Map // map[string]*visitor
 	qps             rate.Limit
 	burst           int
@@ -27,8 +29,8 @@ type IPRateLimiter struct {
 	cleanupMu       sync.Mutex
 }
 
-// NewIPRateLimiter 创建新的限流器。
-func NewIPRateLimiter(qps float64, burst int) *IPRateLimiter {
+// NewKeyRateLimiter 创建新的限流器。
+func NewKeyRateLimiter(qps float64, burst int) *KeyRateLimiter {
 	if qps <= 0 {
 		qps = 10
 	}
@@ -36,7 +38,7 @@ func NewIPRateLimiter(qps float64, burst int) *IPRateLimiter {
 		burst = 20
 	}
 
-	limiter := &IPRateLimiter{
+	limiter := &KeyRateLimiter{
 		qps:             rate.Limit(qps),
 		burst:           burst,
 		cleanupInterval: 1 * time.Minute,
@@ -52,11 +54,28 @@ func NewIPRateLimiter(qps float64, burst int) *IPRateLimiter {
 
 // RateLimit 返回限流中间件。
 func RateLimit(qps float64, burst int) gin.HandlerFunc {
-	limiter := NewIPRateLimiter(qps, burst)
+	return RateLimitBy(qps, burst, func(c *gin.Context) string {
+		return c.ClientIP()
+	})
+}
+
+// RateLimitBy 返回可自定义 key 的限流中间件。
+func RateLimitBy(qps float64, burst int, keyExtractor func(c *gin.Context) string) gin.HandlerFunc {
+	limiter := NewKeyRateLimiter(qps, burst)
 
 	return func(c *gin.Context) {
-		clientIP := c.ClientIP()
-		if !limiter.allow(clientIP) {
+		key := ""
+		if keyExtractor != nil {
+			key = strings.TrimSpace(keyExtractor(c))
+		}
+		if key == "" {
+			key = strings.TrimSpace(c.ClientIP())
+		}
+		if key == "" {
+			key = "anonymous"
+		}
+
+		if !limiter.allow(key) {
 			utils.Error(c, http.StatusTooManyRequests, "RATE_LIMITED", "请求过于频繁，请稍后再试")
 			c.Abort()
 			return
@@ -65,23 +84,24 @@ func RateLimit(qps float64, burst int) gin.HandlerFunc {
 	}
 }
 
-func (l *IPRateLimiter) allow(ip string) bool {
+func (l *KeyRateLimiter) allow(key string) bool {
 	now := time.Now()
 
 	// 从 sync.Map 获取或创建 visitor
-	v, _ := l.visitors.LoadOrStore(ip, &visitor{
+	v, _ := l.visitors.LoadOrStore(key, &visitor{
 		limiter:  rate.NewLimiter(l.qps, l.burst),
-		lastSeen: now,
+		lastSeen: now.UnixNano(),
 	})
 
 	vis := v.(*visitor)
-	vis.lastSeen = now
+	// 使用原子操作更新 lastSeen，避免数据竞争
+	atomic.StoreInt64(&vis.lastSeen, now.UnixNano())
 
 	return vis.limiter.Allow()
 }
 
 // cleanupLoop 后台清理过期的访客记录
-func (l *IPRateLimiter) cleanupLoop() {
+func (l *KeyRateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(l.cleanupInterval)
 	defer ticker.Stop()
 
@@ -90,7 +110,7 @@ func (l *IPRateLimiter) cleanupLoop() {
 	}
 }
 
-func (l *IPRateLimiter) cleanup() {
+func (l *KeyRateLimiter) cleanup() {
 	l.cleanupMu.Lock()
 	defer l.cleanupMu.Unlock()
 
@@ -100,9 +120,13 @@ func (l *IPRateLimiter) cleanup() {
 	}
 
 	// 遍历并删除过期的访客
+	nowNano := now.UnixNano()
+	ttlNano := l.ttl.Nanoseconds()
 	l.visitors.Range(func(key, value interface{}) bool {
 		v := value.(*visitor)
-		if now.Sub(v.lastSeen) > l.ttl {
+		// 使用原子操作读取 lastSeen，避免数据竞争
+		lastSeenNano := atomic.LoadInt64(&v.lastSeen)
+		if nowNano-lastSeenNano > ttlNano {
 			l.visitors.Delete(key)
 		}
 		return true
@@ -110,4 +134,3 @@ func (l *IPRateLimiter) cleanup() {
 
 	l.lastCleanupAt = now
 }
-

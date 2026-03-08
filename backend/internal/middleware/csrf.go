@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"strings"
 	"time"
 
 	"nodepass-pro/backend/internal/cache"
@@ -45,6 +46,33 @@ func CSRFProtection() gin.HandlerFunc {
 			return
 		}
 
+		// 检查是否启用严格 CSRF 模式
+		cfg := config.GlobalConfig
+		strictMode := false
+		if cfg != nil {
+			strictMode = cfg.Server.StrictCSRF
+		}
+
+		// 非浏览器请求（无 Origin/Referer）的处理
+		if !isBrowserRequest(c) {
+			if strictMode {
+				// 严格模式：拒绝无 Origin/Referer 的不安全请求
+				if method == http.MethodPost || method == http.MethodPut ||
+					method == http.MethodDelete || method == http.MethodPatch {
+					zap.L().Warn("严格 CSRF 模式：拒绝无 Origin/Referer 的请求",
+						zap.String("method", method),
+						zap.String("path", path),
+						zap.String("ip", c.ClientIP()))
+					utils.Error(c, http.StatusForbidden, "CSRF_REQUIRED", "此请求需要 CSRF 保护")
+					c.Abort()
+					return
+				}
+			}
+			// 非严格模式：跳过 CSRF，便于 CLI/脚本调用
+			c.Next()
+			return
+		}
+
 		// 对于安全方法（GET、HEAD、OPTIONS），生成并设置 CSRF 令牌
 		if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
 			token, err := generateCSRFToken()
@@ -74,12 +102,28 @@ func CSRFProtection() gin.HandlerFunc {
 				true,         // HttpOnly
 			)
 
-			// 设置 SameSite 属性（Gin 的 SetCookie 不支持，需要手动设置）
+			// 设置 SameSite 属性
+			// 注意：不能使用 c.Header() 因为会覆盖已有的 Set-Cookie
+			// 需要手动修改最后一个 Set-Cookie 头
 			sameSite := "Strict"
 			if !isProduction {
 				sameSite = "Lax" // 开发环境使用 Lax 更方便
 			}
-			c.Header("Set-Cookie", c.Writer.Header().Get("Set-Cookie")+"; SameSite="+sameSite)
+
+			// 获取所有 Set-Cookie 头
+			cookies := c.Writer.Header().Values("Set-Cookie")
+			if len(cookies) > 0 {
+				// 修改最后一个 Set-Cookie（刚刚设置的 CSRF cookie）
+				lastCookie := cookies[len(cookies)-1]
+				if !strings.Contains(lastCookie, "SameSite=") {
+					cookies[len(cookies)-1] = lastCookie + "; SameSite=" + sameSite
+					// 清除并重新设置所有 cookies
+					c.Writer.Header().Del("Set-Cookie")
+					for _, cookie := range cookies {
+						c.Writer.Header().Add("Set-Cookie", cookie)
+					}
+				}
+			}
 
 			// 同时在响应头中返回令牌（方便前端获取）
 			c.Header(csrfHeaderName, token)
@@ -136,6 +180,15 @@ func CSRFProtection() gin.HandlerFunc {
 		// 其他方法直接通过
 		c.Next()
 	}
+}
+
+func isBrowserRequest(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	origin := strings.TrimSpace(c.GetHeader("Origin"))
+	referer := strings.TrimSpace(c.GetHeader("Referer"))
+	return origin != "" || referer != ""
 }
 
 // generateCSRFToken 生成随机 CSRF 令牌。

@@ -4,6 +4,11 @@ server:
   allowed_origins:
     - "localhost"
     - "127.0.0.1"
+  # Docker 环境通常在反向代理后，可以信任 X-Forwarded-* 头
+  # 如果直接暴露后端，请设置为 false
+  trust_forwarded_headers: true
+  # 生产环境建议启用严格 CSRF 模式
+  strict_csrf: true
 
 database:
   type: "postgres"
@@ -23,7 +28,11 @@ redis:
   default_ttl: 300
 
 jwt:
-  secret: "change-this-secret-in-production"
+  # JWT 密钥：必须通过环境变量 NODEPASS_JWT_SECRET 设置
+  # 不要在配置文件中硬编码密钥！
+  # 生成方法：openssl rand -base64 48
+  # Docker Compose 中通过环境变量传入
+  secret: ""
   expire_time: 168
 
 telegram:

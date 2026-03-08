@@ -13,6 +13,7 @@ TOTAL_COUNT=0
 ENTRY_GROUP_ID=""
 EXIT_GROUP_ID=""
 NODE_ID=""
+NODE_TOKEN=""
 TUNNEL_ID=""
 
 RESPONSE_CODE=""
@@ -305,6 +306,12 @@ step6_generate_deploy_command() {
   fi
 
   NODE_ID="$node_id"
+  NODE_TOKEN="$(echo "$command" | sed -n "s/.*--token '\\([^']*\\)'.*/\\1/p")"
+  if [[ -z "$NODE_TOKEN" ]]; then
+    echo "  断言失败: 无法从部署命令解析 token"
+    print_response
+    return 1
+  fi
   echo "  NODE_ID=${NODE_ID}"
   return 0
 }
@@ -344,15 +351,19 @@ step7_list_nodes() {
 }
 
 step8_report_heartbeat() {
-  if [[ -z "$NODE_ID" ]]; then
-    echo "  前置失败: NODE_ID 为空"
+  if [[ -z "$NODE_ID" || -z "$NODE_TOKEN" ]]; then
+    echo "  前置失败: NODE_ID 或 NODE_TOKEN 为空"
     return 1
   fi
 
+  local ts nonce tmp
+  ts="$(date +%s)"
+  nonce="ng-it-$(date +%s%N)-${RANDOM}"
   local payload
   payload="$(cat <<JSON
 {
   "node_id": "${NODE_ID}",
+  "token": "${NODE_TOKEN}",
   "cpu_usage": 23.5,
   "memory_usage": 45.7,
   "disk_usage": 60.2,
@@ -376,11 +387,15 @@ step8_report_heartbeat() {
 JSON
 )"
 
-  api_request "POST" "/api/v1/node-instances/heartbeat" "$payload" "noauth" || {
-    echo "  请求失败"
-    print_response
-    return 1
-  }
+  tmp="$(mktemp)"
+  RESPONSE_CODE="$(curl -sS -o "$tmp" -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/node-instances/heartbeat" \
+    -H "Content-Type: application/json" \
+    -H "X-Timestamp: ${ts}" \
+    -H "X-Nonce: ${nonce}" \
+    --data "$payload" 2>&1 || true)"
+  RESPONSE_BODY="$(cat "$tmp")"
+  rm -f "$tmp"
 
   assert_http_code "200" || { print_response; return 1; }
   assert_success_true || { print_response; return 1; }

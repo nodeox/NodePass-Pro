@@ -11,6 +11,7 @@ import Dashboard from './pages/dashboard/Dashboard'
 import UserDashboard from './pages/dashboard/UserDashboard'
 import CreateNodeGroupPage from './pages/NodeGroups/CreateNodeGroup'
 import DeployNodePage from './pages/NodeGroups/DeployNode'
+import EditNodeGroupPage from './pages/NodeGroups/EditNodeGroup'
 import NodeGroupDetailPage from './pages/NodeGroups/NodeGroupDetail'
 import NodeGroupsPage from './pages/NodeGroups'
 import Profile from './pages/profile/Profile'
@@ -124,7 +125,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'node-groups/:id/edit',
-            element: <NodeGroupDetailPage />,
+            element: <EditNodeGroupPage />,
           },
           {
             path: 'node-groups/:id/deploy',

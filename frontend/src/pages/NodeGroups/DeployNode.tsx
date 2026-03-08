@@ -31,6 +31,8 @@ type DeployResult = {
 }
 
 const random4 = (): string => `${Math.floor(1000 + Math.random() * 9000)}`
+const safeTrim = (value: unknown): string =>
+  typeof value === 'string' ? value.trim() : ''
 
 const normalizeServiceName = (name: string): string => {
   const normalized = name
@@ -95,14 +97,20 @@ const DeployNode = () => {
 
     setGenerating(true)
     try {
+      const serviceName = safeTrim(values.service_name)
+      if (!serviceName) {
+        message.error('服务名称不能为空')
+        return
+      }
+
       const resp = await nodeGroupApi.generateDeployCommand(groupID, {
-        service_name: values.service_name.trim(),
+        service_name: serviceName,
         debug_mode: values.debug_mode,
       })
 
       const nodeID = resp.node_id
       const command = resolveCommand(resp)
-      const serviceName = resp.service_name || values.service_name
+      const finalServiceName = resp.service_name || serviceName
 
       if (!nodeID || !command) {
         throw new Error('服务返回的部署信息不完整')
@@ -111,7 +119,7 @@ const DeployNode = () => {
       setDeployResult({
         nodeID,
         command,
-        serviceName,
+        serviceName: finalServiceName,
       })
       message.success('部署命令生成成功')
     } catch (error) {

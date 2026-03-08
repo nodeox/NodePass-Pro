@@ -104,7 +104,29 @@ func parsePositiveIntQuery(c *gin.Context, key string, defaultValue int) (int, e
 }
 
 func inferPanelURL(c *gin.Context) string {
-	scheme := c.GetHeader("X-Forwarded-Proto")
+	cfg := config.GlobalConfig
+	trustForwarded := false
+	if cfg != nil {
+		trustForwarded = cfg.Server.TrustForwardedHeaders
+	}
+
+	scheme := ""
+	host := ""
+
+	// 只有在配置允许时才信任 X-Forwarded-* 头
+	if trustForwarded {
+		scheme = c.GetHeader("X-Forwarded-Proto")
+		if idx := strings.Index(scheme, ","); idx >= 0 {
+			scheme = strings.TrimSpace(scheme[:idx])
+		}
+
+		host = strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+		if idx := strings.Index(host, ","); idx >= 0 {
+			host = strings.TrimSpace(host[:idx])
+		}
+	}
+
+	// 回退到直接连接信息
 	if scheme == "" {
 		if c.Request.TLS != nil {
 			scheme = "https"
@@ -112,7 +134,11 @@ func inferPanelURL(c *gin.Context) string {
 			scheme = "http"
 		}
 	}
-	return scheme + "://" + c.Request.Host
+	if host == "" {
+		host = c.Request.Host
+	}
+
+	return scheme + "://" + host
 }
 
 func writeServiceError(c *gin.Context, err error, defaultCode string) {

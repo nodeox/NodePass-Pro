@@ -62,6 +62,7 @@ type PendingRequest = {
 const apiClient = axios.create({
   baseURL: '/api/v1',
   timeout: 20_000,
+  withCredentials: true,
 })
 
 // 移除旧的存储函数，使用 secureStorage 模块
@@ -71,6 +72,73 @@ const isAuthPath = (url: string): boolean =>
   ['/auth/login', '/auth/register', '/auth/refresh'].some((path) =>
     url.includes(path),
   )
+
+const CSRF_HEADER = 'x-csrf-token'
+let csrfToken: string | null = null
+let csrfTokenPromise: Promise<string | null> | null = null
+
+const isUnsafeMethod = (method?: string): boolean => {
+  const normalized = (method ?? 'get').toLowerCase()
+  return ['post', 'put', 'patch', 'delete'].includes(normalized)
+}
+
+const pickCSRFTokenFromHeaders = (headers: AxiosResponse['headers']): string | null => {
+  const token = headers?.[CSRF_HEADER]
+  if (typeof token === 'string' && token.trim()) {
+    return token.trim()
+  }
+  if (Array.isArray(token) && token.length > 0) {
+    const first = token[0]
+    if (typeof first === 'string' && first.trim()) {
+      return first.trim()
+    }
+  }
+  return null
+}
+
+const syncCSRFToken = (headers?: AxiosResponse['headers']): void => {
+  if (!headers) {
+    return
+  }
+  const token = pickCSRFTokenFromHeaders(headers)
+  if (token) {
+    csrfToken = token
+  }
+}
+
+const ensureCSRFToken = async (): Promise<string | null> => {
+  if (csrfToken) {
+    return csrfToken
+  }
+
+  const authToken = getStoredToken()
+  if (!authToken) {
+    return null
+  }
+
+  if (csrfTokenPromise) {
+    return csrfTokenPromise
+  }
+
+  csrfTokenPromise = axios
+    .get<ApiSuccessResponse<User>>('/api/v1/auth/me', {
+      timeout: 10_000,
+      withCredentials: true,
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
+    .then((response) => {
+      syncCSRFToken(response.headers)
+      return csrfToken
+    })
+    .catch(() => null)
+    .finally(() => {
+      csrfTokenPromise = null
+    })
+
+  return csrfTokenPromise
+}
 
 const redirectToLogin = (): void => {
   if (window.location.pathname !== '/login') {
@@ -101,15 +169,23 @@ const requestRefreshToken = async (): Promise<string> => {
     throw new Error('缺少登录凭证')
   }
 
+  const csrf = await ensureCSRFToken()
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  }
+  if (csrf) {
+    headers['X-CSRF-Token'] = csrf
+  }
+
   const response = await axios.post<ApiSuccessResponse<{ token: string }>>(
     '/api/v1/auth/refresh',
     {},
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      withCredentials: true,
+      headers,
     },
   )
+  syncCSRFToken(response.headers)
 
   const nextToken = response.data.data?.token
   if (!nextToken) {
@@ -120,17 +196,31 @@ const requestRefreshToken = async (): Promise<string> => {
   return nextToken
 }
 
-apiClient.interceptors.request.use((requestConfig) => {
+apiClient.interceptors.request.use(async (requestConfig) => {
   const token = getStoredToken()
   if (token) {
     requestConfig.headers.Authorization = `Bearer ${token}`
   }
+
+  requestConfig.withCredentials = true
+  const requestURL = requestConfig.url ?? ''
+  if (token && isUnsafeMethod(requestConfig.method) && !isAuthPath(requestURL)) {
+    const csrf = (await ensureCSRFToken()) ?? csrfToken
+    if (csrf) {
+      requestConfig.headers['X-CSRF-Token'] = csrf
+    }
+  }
+
   return requestConfig
 })
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    syncCSRFToken(response.headers)
+    return response
+  },
   async (error: AxiosError<ApiErrorResponse>) => {
+    syncCSRFToken(error.response?.headers)
     const status = error.response?.status
     const originalRequest = error.config as RetryableRequestConfig | undefined
     const requestURL = originalRequest?.url ?? ''

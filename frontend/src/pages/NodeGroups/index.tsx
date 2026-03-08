@@ -1,6 +1,15 @@
 import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  MoreOutlined,
+  PoweroffOutlined,
+  UploadOutlined,
+} from '@ant-design/icons'
+import {
   Button,
   Card,
+  Dropdown,
   Modal,
   Space,
   Spin,
@@ -145,7 +154,7 @@ const NodeGroupsPage = () => {
         title: '类型',
         dataIndex: 'type',
         key: 'type',
-        width: 120,
+        width: 96,
         render: (value: NodeGroup['type']) =>
           value === 'entry' ? <Tag color="blue">入口组</Tag> : <Tag color="green">出口组</Tag>,
       },
@@ -153,14 +162,14 @@ const NodeGroupsPage = () => {
         title: '状态',
         dataIndex: 'is_enabled',
         key: 'is_enabled',
-        width: 120,
+        width: 96,
         render: (enabled: boolean) =>
           enabled ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
       },
       {
         title: '节点数',
         key: 'node_count',
-        width: 140,
+        width: 110,
         render: (_: unknown, record: NodeGroup) => {
           const online = record.stats?.online_nodes ?? 0
           const totalNodes = record.stats?.total_nodes ?? 0
@@ -170,7 +179,7 @@ const NodeGroupsPage = () => {
       {
         title: '总流量',
         key: 'total_traffic',
-        width: 160,
+        width: 130,
         render: (_: unknown, record: NodeGroup) => {
           const trafficIn = record.stats?.total_traffic_in ?? 0
           const trafficOut = record.stats?.total_traffic_out ?? 0
@@ -181,28 +190,71 @@ const NodeGroupsPage = () => {
         title: '创建时间',
         dataIndex: 'created_at',
         key: 'created_at',
-        width: 180,
+        width: 168,
         render: (value: string) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
       },
       {
         title: '操作',
         key: 'actions',
         fixed: 'right',
-        width: 280,
+        width: 240,
+        align: 'center',
         render: (_: unknown, record: NodeGroup) => (
-          <Space size="small" wrap>
-            <Button type="link" onClick={() => void handleToggle(record)}>
-              {record.is_enabled ? '禁用' : '启用'}
-            </Button>
-            <Button type="link" onClick={() => navigate(`/node-groups/${record.id}`)}>
-              查看详情
-            </Button>
-            <Button type="link" onClick={() => navigate(`/node-groups/${record.id}/deploy`)}>
+          <Space size={6} style={{ whiteSpace: 'nowrap' }}>
+            <Button
+              size="small"
+              type="primary"
+              icon={<UploadOutlined />}
+              onClick={() => navigate(`/node-groups/${record.id}/deploy`)}
+            >
               部署节点
             </Button>
-            <Button type="link" danger onClick={() => handleDelete(record)}>
-              删除
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/node-groups/${record.id}`)}
+            >
+              查看详情
             </Button>
+            <Button
+              size="small"
+              icon={<PoweroffOutlined />}
+              type={record.is_enabled ? 'default' : 'primary'}
+              onClick={() => void handleToggle(record)}
+            >
+              {record.is_enabled ? '禁用' : '启用'}
+            </Button>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'edit',
+                    icon: <EditOutlined />,
+                    label: '编辑',
+                  },
+                  {
+                    key: 'delete',
+                    icon: <DeleteOutlined />,
+                    label: '删除',
+                    danger: true,
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'edit') {
+                    navigate(`/node-groups/${record.id}/edit`)
+                    return
+                  }
+                  if (key === 'delete') {
+                    handleDelete(record)
+                  }
+                },
+              }}
+            >
+              <Button size="small" icon={<MoreOutlined />}>
+                更多
+              </Button>
+            </Dropdown>
           </Space>
         ),
       },
@@ -234,12 +286,14 @@ const NodeGroupsPage = () => {
           rowKey="id"
           dataSource={items}
           columns={columns}
+          size="small"
           scroll={{ x: 980 }}
           pagination={{
             current: page,
             pageSize,
             total,
             showSizeChanger: true,
+            size: 'small',
             showTotal: (count) => `共 ${count} 条`,
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage)

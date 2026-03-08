@@ -45,6 +45,12 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # JWT 密钥（必须设置）
+      # 生成方法：openssl rand -base64 48
+      # 警告：不要使用默认值，必须在 .env 文件或环境变量中设置
+      NODEPASS_JWT_SECRET: "${JWT_SECRET:?JWT_SECRET environment variable is required. Generate with: openssl rand -base64 48}"
+      NODEPASS_JWT_EXPIRE_TIME: "${JWT_EXPIRE_TIME:-168}"
+      # 授权配置
       NODEPASS_LICENSE_ENABLED: "${BACKEND_LICENSE_ENABLED:-false}"
       NODEPASS_LICENSE_VERIFY_URL: "${LICENSE_VERIFY_URL:-}"
       NODEPASS_LICENSE_LICENSE_KEY: "${LICENSE_KEY:-}"
