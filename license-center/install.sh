@@ -14,11 +14,11 @@ BACKUP_DIR="${BACKUP_DIR:-${INSTALL_DIR%/}-backups}"
 LAST_CONFIG_BACKUP=""
 
 # 镜像相关配置
-USE_PREBUILT_IMAGE=false
+USE_PREBUILT_IMAGE=true
 IMAGE_URL=""
 IMAGE_FILE=""
-IMAGE_NAME="nodepass/license-center"
-IMAGE_VERSION="0.3.0"
+IMAGE_NAME="ghcr.io/nodeox/license-center"
+IMAGE_VERSION="latest"
 
 SUDO_CMD=""
 PKG_MANAGER=""
@@ -50,15 +50,16 @@ NodePass License Center 一键部署脚本 v0.3.0
   --install-dir <dir>          安装目录（默认: /opt/nodepass-license-center）
   --project-subdir <name>      子目录（默认: license-center）
   --skip-health-check          跳过健康检查
-  --use-image                  使用预构建镜像（不从源码构建）
+  --use-image                  使用预构建镜像（默认）
+  --build-source               使用源码构建（覆盖默认镜像部署）
   --image-url <url>            镜像下载地址
   --image-file <file>          本地镜像文件路径
-  --image-name <name>          镜像名称（默认: nodepass/license-center）
-  --image-version <ver>        镜像版本（默认: 0.3.0）
+  --image-name <name>          镜像名称（默认: ghcr.io/nodeox/license-center）
+  --image-version <ver>        镜像版本（默认: latest）
   -h, --help                   显示帮助
 
 示例:
-  # 安装
+  # 安装（默认镜像部署）
   bash install.sh --install
 
   # 升级
@@ -70,14 +71,17 @@ NodePass License Center 一键部署脚本 v0.3.0
   # 自定义安装目录
   bash install.sh --install --install-dir /data/license-center
 
-  # 使用预构建镜像安装
+  # 显式使用镜像安装
   bash install.sh --install --use-image
 
+  # 切换为源码构建安装
+  bash install.sh --install --build-source
+
   # 从 URL 下载镜像安装
-  bash install.sh --install --use-image --image-url https://example.com/license-center-0.3.0.tar.gz
+  bash install.sh --install --image-url https://example.com/license-center-latest.tar.gz
 
   # 从本地文件安装
-  bash install.sh --install --use-image --image-file /path/to/license-center-0.3.0.tar.gz
+  bash install.sh --install --image-file /path/to/license-center-latest.tar.gz
 
 远程一键安装:
   bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
@@ -275,6 +279,10 @@ parse_args() {
         USE_PREBUILT_IMAGE=true
         shift
         ;;
+      --build-source|--use-source)
+        USE_PREBUILT_IMAGE=false
+        shift
+        ;;
       --image-url)
         IMAGE_URL="${2:-}"
         USE_PREBUILT_IMAGE=true
@@ -374,8 +382,8 @@ prepare_image() {
     load_image_from_file "$temp_file"
     rm -f "$temp_file"
   else
-    # 从 Docker Hub 拉取镜像
-    log_info "从 Docker Hub 拉取镜像: ${IMAGE_NAME}:${IMAGE_VERSION}"
+    # 从镜像仓库拉取镜像
+    log_info "从镜像仓库拉取镜像: ${IMAGE_NAME}:${IMAGE_VERSION}"
     docker pull "${IMAGE_NAME}:${IMAGE_VERSION}"
   fi
 
@@ -743,11 +751,11 @@ BANNER
   fi
 
   if [[ "$USE_PREBUILT_IMAGE" == true ]]; then
-    log_info "使用预构建镜像模式"
+    log_info "使用预构建镜像模式（默认）"
     prepare_image
     prepare_config_only
   else
-    log_info "使用源码构建模式"
+    log_info "使用源码构建模式（已显式指定）"
     prepare_repo
   fi
 

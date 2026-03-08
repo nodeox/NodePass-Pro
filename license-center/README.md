@@ -54,7 +54,7 @@
 
 ### 方式一：一键安装（推荐生产环境）
 
-#### 使用源码构建
+#### 默认镜像部署（GHCR，推荐）
 ```bash
 # 远程一键安装
 bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
@@ -65,20 +65,22 @@ chmod +x install.sh
 ./install.sh --install
 ```
 
-#### 使用预构建镜像（推荐）
+#### 其他部署方式
 ```bash
-# 从 Docker Hub 拉取镜像
+# 显式使用镜像模式（与默认一致）
 bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") \
   --install --use-image
 
+# 切换为源码构建
+bash install.sh --install --build-source
+
 # 从本地镜像文件安装（离线环境）
-bash install.sh --install --use-image \
-  --image-file /path/to/license-center-0.3.0.tar.gz
+bash install.sh --install --image-file /path/to/license-center-latest.tar.gz
 
 # 从私有仓库安装
-bash install.sh --install --use-image \
+bash install.sh --install \
   --image-name registry.example.com/license-center \
-  --image-version 0.3.0
+  --image-version latest
 ```
 
 ### 方式二：使用 Makefile（推荐开发环境）
