@@ -382,6 +382,7 @@
                 <th>客户</th>
                 <th>状态</th>
                 <th>过期时间</th>
+                <th>绑定域名</th>
                 <th>机器上限</th>
                 <th>操作</th>
               </tr>
@@ -603,12 +604,27 @@
         const renderLicenses = () => {
           const tbody = el('licensesTbody')
           if (!state.licenses.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="small">暂无授权码</td></tr>'
+            tbody.innerHTML = '<tr><td colspan="9" class="small">暂无授权码</td></tr>'
             return
           }
 
           tbody.innerHTML = state.licenses
             .map((item) => {
+              const domainCell = item.bound_domain
+                ? `<span class="mono">${item.bound_domain}</span>${
+                    item.domain_locked
+                      ? ' <span class="badge active">锁定</span>'
+                      : ''
+                  }`
+                : '<span class="small">未绑定</span>'
+              const domainAction = item.bound_domain
+                ? `
+                  <button class="btn-ghost" data-action="change-domain" data-id="${item.id}">换域名</button>
+                  <button class="btn-danger" data-action="unbind-domain" data-id="${item.id}">解绑域名</button>
+                `
+                : '<button class="btn-success" data-action="lock-domain" data-id="' +
+                  item.id +
+                  '">锁定域名</button>'
               return `
               <tr>
                 <td>${item.id}</td>
@@ -617,9 +633,13 @@
                 <td>${item.customer || '-'}</td>
                 <td>${statusBadge(item.status)}</td>
                 <td>${formatTime(item.expires_at)}</td>
+                <td>${domainCell}</td>
                 <td>${item.max_machines ?? item.plan?.max_machines ?? '-'}</td>
                 <td>
                   <button class="btn-ghost" data-action="view-activation" data-id="${item.id}">机器</button>
+                  <button class="btn-ghost" data-action="view-domain-history" data-id="${item.id}">域名历史</button>
+                  ${domainAction}
+                  <button class="btn-ghost" data-action="edit-license" data-id="${item.id}">编辑</button>
                   <button class="btn-danger" data-action="revoke-license" data-id="${item.id}">吊销</button>
                   <button class="btn-success" data-action="restore-license" data-id="${item.id}">恢复</button>
                   <button class="btn-danger" data-action="delete-license" data-id="${item.id}">删除</button>
@@ -864,6 +884,118 @@
                 .join('\n')
               alert(text)
               return
+            } else if (action === 'lock-domain') {
+              const domain = prompt('请输入要绑定的域名（如 panel.example.com）', '')
+              if (!domain) return
+              await api(`/api/v1/licenses/${id}/domain/lock`, {
+                method: 'POST',
+                body: JSON.stringify({ domain: domain.trim() }),
+              })
+              setMessage('appMsg', '域名锁定成功', false)
+            } else if (action === 'change-domain') {
+              const newDomain = prompt(
+                '请输入新域名（如 panel.example.com）',
+                target.bound_domain || '',
+              )
+              if (!newDomain) return
+              const reason = prompt('更换原因（可选）', '手动更换域名') || ''
+              await api(`/api/v1/licenses/${id}/domain/change`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  new_domain: newDomain.trim(),
+                  reason: reason.trim(),
+                }),
+              })
+              setMessage('appMsg', '域名更换成功', false)
+            } else if (action === 'unbind-domain') {
+              if (!confirm(`确认解绑授权码 ${target.key} 的域名吗？`)) return
+              const reason = prompt('解绑原因（可选）', '手动解绑域名') || ''
+              await api(`/api/v1/licenses/${id}/domain/unbind`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: reason.trim() }),
+              })
+              setMessage('appMsg', '域名解绑成功', false)
+            } else if (action === 'view-domain-history') {
+              const history = await api(`/api/v1/licenses/${id}/domain/history`)
+              if (!history || !history.length) {
+                alert('该授权码暂无域名绑定历史')
+                return
+              }
+              const text = history
+                .map((h) => {
+                  const oldDomain = h.old_domain || '(空)'
+                  const newDomain = h.new_domain || '(空)'
+                  const reason = h.reason || '-'
+                  const when = formatTime(h.created_at)
+                  const operator = h.operator_id || 0
+                  return `#${h.id} ${oldDomain} -> ${newDomain} 原因:${reason} 操作人:${operator} 时间:${when}`
+                })
+                .join('\n')
+              alert(text)
+              return
+            } else if (action === 'edit-license') {
+              const customer = prompt('客户名称', target.customer || '')
+              if (customer === null) return
+              if (!customer.trim()) {
+                setMessage('appMsg', '客户名称不能为空', true)
+                return
+              }
+
+              const statusInput = prompt(
+                '状态（active/revoked/expired）',
+                target.status || 'active',
+              )
+              if (statusInput === null) return
+              const status = statusInput.trim().toLowerCase()
+              if (!['active', 'revoked', 'expired'].includes(status)) {
+                setMessage('appMsg', '状态无效，仅支持 active/revoked/expired', true)
+                return
+              }
+
+              const maxMachinesInput = prompt(
+                '机器上限（留空表示不限制）',
+                target.max_machines == null ? '' : String(target.max_machines),
+              )
+              if (maxMachinesInput === null) return
+              let maxMachines = null
+              if (maxMachinesInput.trim()) {
+                const parsedMaxMachines = Number(maxMachinesInput.trim())
+                if (!Number.isInteger(parsedMaxMachines) || parsedMaxMachines <= 0) {
+                  setMessage('appMsg', '机器上限必须为正整数', true)
+                  return
+                }
+                maxMachines = parsedMaxMachines
+              }
+
+              const expiresAtInput = prompt(
+                '过期时间（可输入 2026-12-31 23:59 或 ISO8601；留空清除）',
+                target.expires_at ? String(target.expires_at) : '',
+              )
+              if (expiresAtInput === null) return
+              let expiresAt = ''
+              if (expiresAtInput.trim()) {
+                const parsedExpiresAt = new Date(expiresAtInput.trim())
+                if (Number.isNaN(parsedExpiresAt.getTime())) {
+                  setMessage('appMsg', '过期时间格式无效', true)
+                  return
+                }
+                expiresAt = parsedExpiresAt.toISOString()
+              }
+
+              const note = prompt('备注（可空）', target.note || '')
+              if (note === null) return
+
+              await api(`/api/v1/licenses/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  customer: customer.trim(),
+                  status,
+                  max_machines: maxMachines,
+                  expires_at: expiresAt,
+                  note: note.trim(),
+                }),
+              })
+              setMessage('appMsg', '授权码更新成功', false)
             }
             await loadLicenses()
           } catch (error) {
