@@ -174,7 +174,17 @@ func main() {
 	api := r.Group("/api/v1")
 	{
 		api.POST("/auth/login", authHandler.Login)
-		api.POST("/license/verify", licenseHandler.Verify)
+		if cfg.Security.Signature.Enabled {
+			apiSigned := api.Group("")
+			apiSigned.Use(middleware.SignatureMiddleware(middleware.SignatureConfig{
+				Secret:     cfg.Security.Signature.Secret,
+				TimeWindow: cfg.Security.Signature.TimeWindow,
+			}))
+			apiSigned.POST("/license/verify", licenseHandler.Verify)
+			log.Printf("签名校验已启用")
+		} else {
+			api.POST("/license/verify", licenseHandler.Verify)
+		}
 	}
 
 	admin := api.Group("")

@@ -42,8 +42,8 @@ type VerifyRequest struct {
 	Versions    VerifyVersionInfo `json:"versions"`
 	Branch      string            `json:"branch"`
 	Commit      string            `json:"commit"`
-	Domain      string            `json:"domain"`       // 新增：网站域名
-	SiteURL     string            `json:"site_url"`     // 新增：完整网站地址
+	Domain      string            `json:"domain"`   // 新增：网站域名
+	SiteURL     string            `json:"site_url"` // 新增：完整网站地址
 }
 
 // VersionPolicy 授权版本策略。
@@ -125,6 +125,7 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 	req.MachineID = strings.TrimSpace(req.MachineID)
 	req.Action = strings.TrimSpace(req.Action)
 	req.Domain = strings.TrimSpace(req.Domain)
+	req.SiteURL = strings.TrimSpace(req.SiteURL)
 	if req.Action == "" {
 		req.Action = "install"
 	}
@@ -159,8 +160,17 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 		return &VerifyResult{Valid: false, Message: "套餐已禁用"}, nil
 	}
 
-	// 域名验证
-	if s.domainService != nil && req.Domain != "" {
+	// 域名验证（domain 为空时尝试从 site_url 解析，仍为空则拒绝）
+	if s.domainService != nil && DefaultDomainBindingConfig.Enabled {
+		effectiveDomain := extractDomain(req.Domain)
+		if effectiveDomain == "" {
+			effectiveDomain = extractDomain(req.SiteURL)
+		}
+		if effectiveDomain == "" {
+			_ = s.logVerify(&license, req, ip, ua, "failed", "domain 不能为空")
+			return &VerifyResult{Valid: false, Message: "domain 不能为空"}, nil
+		}
+		req.Domain = effectiveDomain
 		if err := s.domainService.VerifyDomain(&license, req.Domain, ip, DefaultDomainBindingConfig); err != nil {
 			_ = s.logVerify(&license, req, ip, ua, "failed", err.Error())
 			return &VerifyResult{Valid: false, Message: err.Error()}, nil

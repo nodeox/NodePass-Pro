@@ -35,6 +35,7 @@ func AdminAuth(authService *services.AuthService) gin.HandlerFunc {
 		}
 
 		c.Set("adminID", claims.AdminID)
+		c.Set("admin_id", claims.AdminID)
 		c.Set("role", claims.Role)
 		c.Set("username", claims.Username)
 		c.Next()

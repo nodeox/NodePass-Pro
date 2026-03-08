@@ -111,6 +111,22 @@ func seedDefaults(db *gorm.DB, cfg *config.Config) error {
 		return fmt.Errorf("查询管理员失败: %w", err)
 	}
 	if adminCount == 0 {
+		if cfg == nil {
+			return fmt.Errorf("配置不能为空")
+		}
+		cfg.Admin.Username = strings.TrimSpace(cfg.Admin.Username)
+		cfg.Admin.Email = strings.TrimSpace(cfg.Admin.Email)
+		cfg.Admin.Password = strings.TrimSpace(cfg.Admin.Password)
+		if cfg.Admin.Username == "" || cfg.Admin.Email == "" || cfg.Admin.Password == "" {
+			return fmt.Errorf("初始化管理员失败: 请完整配置 admin.username/admin.email/admin.password")
+		}
+		if cfg.Admin.Password == "ChangeMe123!" {
+			return fmt.Errorf("初始化管理员失败: 禁止使用默认弱密码")
+		}
+		if len(cfg.Admin.Password) < 12 {
+			return fmt.Errorf("初始化管理员失败: admin.password 长度不能少于 12 位")
+		}
+
 		hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Admin.Password), bcrypt.DefaultCost)
 		if err != nil {
 			return fmt.Errorf("生成管理员密码哈希失败: %w", err)

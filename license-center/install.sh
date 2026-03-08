@@ -375,10 +375,9 @@ ${BLUE}📍 访问地址:${NC}
   • 管理面板: http://127.0.0.1:8090/console
   • API 文档: http://127.0.0.1:8090/api/v1
 
-${BLUE}🔐 默认账号:${NC}
-  • 用户名: admin
-  • 密码: ChangeMe123!
-  ${RED}⚠️  请立即修改默认密码！${NC}
+${BLUE}🔐 管理员账号:${NC}
+  • 首次初始化会使用配置文件中的 admin.username / admin.password
+  • 请确保已在 ${INSTALL_DIR}/${PROJECT_SUBDIR}/configs/config.yaml 设置强密码
 
 ${BLUE}📚 功能特性:${NC}
   • ✅ 授权码管理（生成、吊销、转移）

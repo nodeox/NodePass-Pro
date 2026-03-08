@@ -82,7 +82,7 @@ export default function Login() {
         </Form>
 
         <div style={{ textAlign: 'center', color: '#999', fontSize: 12 }}>
-          默认账号: admin / ChangeMe123!
+          请输入管理员账号与密码
         </div>
       </Card>
     </div>

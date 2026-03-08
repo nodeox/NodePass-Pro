@@ -20,13 +20,15 @@ redis:
   prefix: "license:"
 
 jwt:
-  secret: "change-this-license-secret"
+  # 必填，建议使用 32 位以上随机字符串
+  secret: ""
   expire_hours: 24
 
 admin:
   username: "admin"
   email: "admin@license.local"
-  password: "ChangeMe123!"
+  # 首次初始化管理员时必填，建议使用 12 位以上强密码
+  password: ""
 
 security:
   rate_limit:
@@ -35,7 +37,8 @@ security:
     burst: 20
   signature:
     enabled: false
-    secret: "change-this-signature-secret"
+    # 启用后必填，建议使用 32 位以上随机字符串
+    secret: ""
     time_window: 300
   ip_whitelist:
     enabled: false

@@ -7,6 +7,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	defaultJWTSecret       = "change-this-license-secret"
+	defaultAdminPassword   = "ChangeMe123!"
+	defaultSignatureSecret = "change-this-signature-secret"
+)
+
 // Config 应用配置。
 type Config struct {
 	Server     ServerConfig     `mapstructure:"server"`
@@ -67,9 +73,9 @@ type SecurityConfig struct {
 
 // RateLimitConfig 限流配置。
 type RateLimitConfig struct {
-	Enabled            bool `mapstructure:"enabled"`
-	RequestsPerSecond  int  `mapstructure:"requests_per_second"`
-	Burst              int  `mapstructure:"burst"`
+	Enabled           bool `mapstructure:"enabled"`
+	RequestsPerSecond int  `mapstructure:"requests_per_second"`
+	Burst             int  `mapstructure:"burst"`
 }
 
 // SignatureConfig 签名配置。
@@ -137,14 +143,42 @@ func Load(path string) (*Config, error) {
 	if cfg.JWT.ExpireHours <= 0 {
 		cfg.JWT.ExpireHours = 24
 	}
+
+	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
+	if cfg.JWT.Secret == "" || cfg.JWT.Secret == defaultJWTSecret {
+		return nil, fmt.Errorf("jwt.secret 未配置或仍为默认值，请设置强随机密钥")
+	}
+	if len(cfg.JWT.Secret) < 32 {
+		return nil, fmt.Errorf("jwt.secret 长度不能少于 32 位")
+	}
+
+	cfg.Admin.Username = strings.TrimSpace(cfg.Admin.Username)
+	cfg.Admin.Email = strings.TrimSpace(cfg.Admin.Email)
+	cfg.Admin.Password = strings.TrimSpace(cfg.Admin.Password)
 	if cfg.Admin.Username == "" {
 		cfg.Admin.Username = "admin"
 	}
-	if cfg.Admin.Password == "" {
-		cfg.Admin.Password = "ChangeMe123!"
-	}
 	if cfg.Admin.Email == "" {
 		cfg.Admin.Email = "admin@license.local"
+	}
+	if cfg.Admin.Password == defaultAdminPassword {
+		return nil, fmt.Errorf("admin.password 仍为默认值，请修改为强密码")
+	}
+	if cfg.Admin.Password != "" && len(cfg.Admin.Password) < 12 {
+		return nil, fmt.Errorf("admin.password 长度不能少于 12 位")
+	}
+
+	cfg.Security.Signature.Secret = strings.TrimSpace(cfg.Security.Signature.Secret)
+	if cfg.Security.Signature.TimeWindow <= 0 {
+		cfg.Security.Signature.TimeWindow = 300
+	}
+	if cfg.Security.Signature.Enabled {
+		if cfg.Security.Signature.Secret == "" || cfg.Security.Signature.Secret == defaultSignatureSecret {
+			return nil, fmt.Errorf("security.signature.secret 未配置或仍为默认值")
+		}
+		if len(cfg.Security.Signature.Secret) < 32 {
+			return nil, fmt.Errorf("security.signature.secret 长度不能少于 32 位")
+		}
 	}
 
 	return cfg, nil
