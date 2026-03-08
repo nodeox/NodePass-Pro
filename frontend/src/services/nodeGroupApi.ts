@@ -1,14 +1,17 @@
 import type { ApiSuccessResponse } from '../types'
 import type {
+  AccessibleNodeGroup,
   CreateNodeGroupPayload,
   CreateTunnelPayload,
   DeployCommandResponse,
   DeployNodePayload,
   NodeGroup,
+  NodeGroupRelation,
   NodeGroupStats,
   NodeInstance,
   PaginationResult,
   Tunnel,
+  UpdateNodeGroupPayload,
 } from '../types/nodeGroup'
 
 import apiClient, { unwrapData } from './api'
@@ -29,12 +32,17 @@ export const nodeGroupApi = {
   get: (id: number) =>
     apiClient.get<ApiSuccessResponse<NodeGroup>>(`/node-groups/${id}`).then(unwrapData),
 
+  accessibleNodes: () =>
+    apiClient
+      .get<ApiSuccessResponse<{ items: AccessibleNodeGroup[] }>>('/node-groups/accessible-nodes')
+      .then(unwrapData),
+
   create: (payload: CreateNodeGroupPayload) =>
     apiClient
       .post<ApiSuccessResponse<NodeGroup>>('/node-groups', payload)
       .then(unwrapData),
 
-  update: (id: number, payload: Partial<CreateNodeGroupPayload>) =>
+  update: (id: number, payload: UpdateNodeGroupPayload) =>
     apiClient
       .put<ApiSuccessResponse<NodeGroup>>(`/node-groups/${id}`, payload)
       .then(unwrapData),
@@ -70,6 +78,26 @@ export const nodeGroupApi = {
   addNode: (id: number, payload: { name: string; host: string; port: number }) =>
     apiClient
       .post<ApiSuccessResponse<NodeInstance>>(`/node-groups/${id}/nodes`, payload)
+      .then(unwrapData),
+
+  listRelations: (id: number) =>
+    apiClient
+      .get<ApiSuccessResponse<NodeGroupRelation[]>>(`/node-groups/${id}/relations`)
+      .then(unwrapData),
+
+  createRelation: (id: number, payload: { exit_group_id: number }) =>
+    apiClient
+      .post<ApiSuccessResponse<NodeGroupRelation>>(`/node-groups/${id}/relations`, payload)
+      .then(unwrapData),
+
+  deleteRelation: (id: number) =>
+    apiClient
+      .delete<ApiSuccessResponse<null>>(`/node-group-relations/${id}`)
+      .then(unwrapData),
+
+  toggleRelation: (id: number) =>
+    apiClient
+      .post<ApiSuccessResponse<{ id: number }>>(`/node-group-relations/${id}/toggle`)
       .then(unwrapData),
 }
 

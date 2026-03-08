@@ -66,6 +66,14 @@ type ListNodeGroupParams struct {
 	PageSize  int     `json:"page_size"`
 }
 
+// AccessibleNodeGroup 可访问节点组（用于用户侧节点状态查看）。
+type AccessibleNodeGroup struct {
+	Group    models.NodeGroup      `json:"group"`
+	Nodes    []models.NodeInstance `json:"nodes"`
+	Editable bool                  `json:"editable"`
+	IsPublic bool                  `json:"is_public"`
+}
+
 // DeployNodeRequest 部署节点请求。
 type DeployNodeRequest struct {
 	ServiceName string `json:"service_name"`
@@ -243,6 +251,74 @@ func (s *NodeGroupService) List(userID uint, params *ListNodeGroupParams) ([]mod
 	}
 
 	return list, total, nil
+}
+
+// ListAccessibleNodeGroups 获取当前用户可访问的节点组及节点实例。
+// 规则：
+// 1) 用户自己的节点组：可编辑；
+// 2) 管理员账号创建且启用的节点组：视为公共节点组，仅只读。
+func (s *NodeGroupService) ListAccessibleNodeGroups(userID uint) ([]AccessibleNodeGroup, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("node group service 未初始化")
+	}
+	if userID == 0 {
+		return nil, fmt.Errorf("%w: user_id 无效", ErrInvalidParams)
+	}
+
+	groups := make([]models.NodeGroup, 0)
+	if err := s.db.Model(&models.NodeGroup{}).
+		Joins("JOIN users owners ON owners.id = node_groups.user_id").
+		Where(
+			"node_groups.user_id = ? OR (owners.role = ? AND node_groups.is_enabled = ?)",
+			userID,
+			"admin",
+			true,
+		).
+		Preload("Stats").
+		Order("node_groups.id DESC").
+		Find(&groups).Error; err != nil {
+		return nil, fmt.Errorf("查询可访问节点组失败: %w", err)
+	}
+	if len(groups) == 0 {
+		return make([]AccessibleNodeGroup, 0), nil
+	}
+
+	groupIDs := make([]uint, 0, len(groups))
+	groupPublicMap := make(map[uint]bool, len(groups))
+	for _, group := range groups {
+		groupIDs = append(groupIDs, group.ID)
+		groupPublicMap[group.ID] = group.UserID != userID
+	}
+
+	instances := make([]models.NodeInstance, 0)
+	if err := s.db.Model(&models.NodeInstance{}).
+		Where("node_group_id IN ?", groupIDs).
+		Order("id DESC").
+		Find(&instances).Error; err != nil {
+		return nil, fmt.Errorf("查询可访问节点实例失败: %w", err)
+	}
+
+	nodesByGroup := make(map[uint][]models.NodeInstance, len(groups))
+	for _, item := range instances {
+		// 公共节点组只展示启用实例（避免暴露无效/内部节点）。
+		if groupPublicMap[item.NodeGroupID] && !item.IsEnabled {
+			continue
+		}
+		nodesByGroup[item.NodeGroupID] = append(nodesByGroup[item.NodeGroupID], item)
+	}
+
+	result := make([]AccessibleNodeGroup, 0, len(groups))
+	for _, group := range groups {
+		editable := group.UserID == userID
+		result = append(result, AccessibleNodeGroup{
+			Group:    group,
+			Nodes:    nodesByGroup[group.ID],
+			Editable: editable,
+			IsPublic: !editable,
+		})
+	}
+
+	return result, nil
 }
 
 // Get 获取节点组。

@@ -58,8 +58,8 @@ export interface NodeInstance {
   node_group_id: number
   node_id: string
   name: string
-  host: string
-  port: number
+  host: string | null
+  port: number | null
   status: 'online' | 'offline' | 'maintain'
   is_enabled: boolean
   system_info?: SystemInfo
@@ -83,6 +83,23 @@ export interface NodeGroup {
   node_instances?: NodeInstance[]
   created_at: string
   updated_at: string
+}
+
+export interface NodeGroupRelation {
+  id: number
+  entry_group_id: number
+  exit_group_id: number
+  is_enabled: boolean
+  created_at: string
+  entry_group?: NodeGroup
+  exit_group?: NodeGroup
+}
+
+export interface AccessibleNodeGroup {
+  group: NodeGroup
+  nodes: NodeInstance[]
+  editable: boolean
+  is_public: boolean
 }
 
 // 转发目标
@@ -131,6 +148,13 @@ export interface CreateNodeGroupPayload {
   type: 'entry' | 'exit'
   description?: string
   config: NodeGroupConfig
+}
+
+export interface UpdateNodeGroupPayload {
+  name?: string
+  description?: string
+  config?: NodeGroupConfig
+  is_enabled?: boolean
 }
 
 export interface DeployNodePayload {

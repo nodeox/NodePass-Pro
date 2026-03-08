@@ -38,9 +38,9 @@ func (h *BenefitCodeHandler) Generate(c *gin.Context) {
 	}
 
 	type requestPayload struct {
-		VIPLevel     int        `json:"vip_level" binding:"required"`
-		DurationDays int        `json:"duration_days" binding:"required"`
-		Count        int        `json:"count" binding:"required"`
+		VIPLevel     *int       `json:"vip_level" binding:"required"`
+		DurationDays int        `json:"duration_days" binding:"required,gt=0"`
+		Count        int        `json:"count" binding:"required,gt=0"`
 		ExpiresAt    *time.Time `json:"expires_at"`
 	}
 	var req requestPayload
@@ -49,7 +49,7 @@ func (h *BenefitCodeHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	codes, err := h.benefitService.Generate(adminID, req.VIPLevel, req.DurationDays, req.Count, req.ExpiresAt)
+	codes, err := h.benefitService.Generate(adminID, *req.VIPLevel, req.DurationDays, req.Count, req.ExpiresAt)
 	if err != nil {
 		writeServiceError(c, err, "GENERATE_BENEFIT_CODES_FAILED")
 		return

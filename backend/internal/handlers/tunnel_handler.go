@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -49,7 +50,7 @@ func (h *TunnelHandler) Create(c *gin.Context) {
 
 	tunnel, err := h.service.Create(targetUserID, &req.CreateTunnelRequest)
 	if err != nil {
-		writeServiceError(c, err, "CREATE_TUNNEL_FAILED")
+		writeTunnelServiceError(c, err, "CREATE_TUNNEL_FAILED")
 		return
 	}
 	utils.SuccessResponse(c, tunnel, "隧道创建成功")
@@ -102,7 +103,7 @@ func (h *TunnelHandler) List(c *gin.Context) {
 
 	items, total, err := h.service.List(scopeUserID, params)
 	if err != nil {
-		writeServiceError(c, err, "LIST_TUNNELS_FAILED")
+		writeTunnelServiceError(c, err, "LIST_TUNNELS_FAILED")
 		return
 	}
 	utils.SuccessResponse(c, http.StatusOK, gin.H{
@@ -132,7 +133,7 @@ func (h *TunnelHandler) Get(c *gin.Context) {
 
 	tunnel, err := h.service.Get(scopeUserID, tunnelID)
 	if err != nil {
-		writeServiceError(c, err, "GET_TUNNEL_FAILED")
+		writeTunnelServiceError(c, err, "GET_TUNNEL_FAILED")
 		return
 	}
 	utils.Success(c, tunnel)
@@ -164,7 +165,7 @@ func (h *TunnelHandler) Update(c *gin.Context) {
 
 	tunnel, err := h.service.Update(scopeUserID, tunnelID, &req)
 	if err != nil {
-		writeServiceError(c, err, "UPDATE_TUNNEL_FAILED")
+		writeTunnelServiceError(c, err, "UPDATE_TUNNEL_FAILED")
 		return
 	}
 	utils.SuccessResponse(c, tunnel, "隧道更新成功")
@@ -188,7 +189,7 @@ func (h *TunnelHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.service.Delete(scopeUserID, tunnelID); err != nil {
-		writeServiceError(c, err, "DELETE_TUNNEL_FAILED")
+		writeTunnelServiceError(c, err, "DELETE_TUNNEL_FAILED")
 		return
 	}
 	utils.SuccessResponse(c, nil, "隧道删除成功")
@@ -234,7 +235,7 @@ func (h *TunnelHandler) changeStatus(c *gin.Context, action string) {
 		return
 	}
 	if err != nil {
-		writeServiceError(c, err, "CHANGE_TUNNEL_STATUS_FAILED")
+		writeTunnelServiceError(c, err, "CHANGE_TUNNEL_STATUS_FAILED")
 		return
 	}
 	tunnel, err = h.service.Get(scopeUserID, tunnelID)
@@ -243,4 +244,39 @@ func (h *TunnelHandler) changeStatus(c *gin.Context, action string) {
 		return
 	}
 	utils.SuccessResponse(c, tunnel, "隧道状态更新成功")
+}
+
+func writeTunnelServiceError(c *gin.Context, err error, defaultCode string) {
+	message := cleanTunnelServiceErrorMessage(err)
+	switch {
+	case errors.Is(err, services.ErrUnauthorized):
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", message)
+	case errors.Is(err, services.ErrInvalidParams):
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", message)
+	case errors.Is(err, services.ErrForbidden):
+		utils.Error(c, http.StatusForbidden, "FORBIDDEN", message)
+	case errors.Is(err, services.ErrNotFound):
+		utils.Error(c, http.StatusNotFound, "NOT_FOUND", message)
+	case errors.Is(err, services.ErrConflict):
+		utils.Error(c, http.StatusConflict, "CONFLICT", message)
+	default:
+		writeServiceError(c, err, defaultCode)
+	}
+}
+
+func cleanTunnelServiceErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	message = strings.TrimPrefix(message, "invalid params: ")
+	message = strings.TrimPrefix(message, "not found: ")
+	message = strings.TrimPrefix(message, "forbidden: ")
+	message = strings.TrimPrefix(message, "unauthorized: ")
+	message = strings.TrimPrefix(message, "conflict: ")
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "请求处理失败"
+	}
+	return message
 }

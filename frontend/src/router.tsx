@@ -14,6 +14,8 @@ import DeployNodePage from './pages/NodeGroups/DeployNode'
 import EditNodeGroupPage from './pages/NodeGroups/EditNodeGroup'
 import NodeGroupDetailPage from './pages/NodeGroups/NodeGroupDetail'
 import NodeGroupsPage from './pages/NodeGroups'
+import MyNodes from './pages/nodes/MyNodes'
+import NodeStatus from './pages/nodes/NodeStatus'
 import Profile from './pages/profile/Profile'
 import Announcements from './pages/system/Announcements'
 import AuditLogs from './pages/system/AuditLogs'
@@ -154,7 +156,15 @@ const router = createBrowserRouter([
               },
               {
                 path: 'node-groups',
-                element: <NodeGroupsPage />,
+                element: <Navigate to="/user/my-nodes" replace />,
+              },
+              {
+                path: 'my-nodes',
+                element: <MyNodes />,
+              },
+              {
+                path: 'node-status',
+                element: <NodeStatus />,
               },
               {
                 path: 'tunnels',

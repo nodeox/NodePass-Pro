@@ -6,6 +6,7 @@ import {
   Modal,
   Progress,
   Row,
+  Select,
   Space,
   Statistic,
   Table,
@@ -21,7 +22,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { nodeGroupApi, nodeInstanceApi, tunnelApi } from '../../services/nodeGroupApi'
-import type { NodeGroup, NodeInstance, Tunnel } from '../../types/nodeGroup'
+import type { NodeGroup, NodeGroupRelation, NodeInstance, Tunnel } from '../../types/nodeGroup'
 import { getErrorMessage } from '../../utils/error'
 
 const formatBytes = (bytes: number): string => {
@@ -77,9 +78,14 @@ const NodeGroupDetail = () => {
   const groupID = Number(id)
 
   const [loading, setLoading] = useState<boolean>(false)
+  const [relationSubmitting, setRelationSubmitting] = useState<boolean>(false)
+  const [relationModalOpen, setRelationModalOpen] = useState<boolean>(false)
+  const [selectedExitGroupID, setSelectedExitGroupID] = useState<number | undefined>(undefined)
   const [group, setGroup] = useState<NodeGroup | null>(null)
   const [nodes, setNodes] = useState<NodeInstance[]>([])
   const [tunnels, setTunnels] = useState<Tunnel[]>([])
+  const [relations, setRelations] = useState<NodeGroupRelation[]>([])
+  const [exitGroups, setExitGroups] = useState<NodeGroup[]>([])
 
   const buildTunnelDetailPath = useCallback(
     (tunnelID: number) => {
@@ -105,16 +111,22 @@ const NodeGroupDetail = () => {
       }
 
       try {
-        const [detail, stats, nodeList, tunnelList] = await Promise.all([
+        const [detail, stats, nodeList, tunnelList, relationList, exitGroupList] = await Promise.all([
           nodeGroupApi.get(groupID),
           nodeGroupApi.getStats(groupID),
           nodeGroupApi.listNodes(groupID),
           tunnelApi.list({ page: 1, page_size: 500 }),
+          nodeGroupApi.listRelations(groupID),
+          nodeGroupApi.list({ type: 'exit', enabled: true, page: 1, page_size: 500 }),
         ])
 
         const tunnelItems = tunnelList.items ?? []
+        const relationItems = Array.isArray(relationList) ? relationList : []
+        const exitItems = Array.isArray(exitGroupList.items) ? exitGroupList.items : []
         setGroup({ ...detail, stats: stats ?? detail.stats })
         setNodes(Array.isArray(nodeList) ? nodeList : [])
+        setRelations(relationItems)
+        setExitGroups(exitItems)
         setTunnels(
           tunnelItems.filter(
             (item) => item.entry_group_id === groupID || item.exit_group_id === groupID,
@@ -208,6 +220,75 @@ const NodeGroupDetail = () => {
     } catch (error) {
       message.error(getErrorMessage(error, '更新隧道状态失败'))
     }
+  }
+
+  const relatedExitGroupIDs = useMemo(
+    () =>
+      new Set(
+        relations
+          .filter((item) => item.entry_group_id === groupID)
+          .map((item) => item.exit_group_id),
+      ),
+    [relations, groupID],
+  )
+
+  const availableExitGroups = useMemo(() => {
+    if (group?.type !== 'entry') {
+      return []
+    }
+    return exitGroups.filter((item) => item.id !== groupID && !relatedExitGroupIDs.has(item.id))
+  }, [exitGroups, groupID, group?.type, relatedExitGroupIDs])
+
+  const handleCreateRelation = async () => {
+    if (!group || group.type !== 'entry') {
+      return
+    }
+    if (!selectedExitGroupID) {
+      message.warning('请选择要关联的出口组')
+      return
+    }
+
+    setRelationSubmitting(true)
+    try {
+      await nodeGroupApi.createRelation(group.id, { exit_group_id: selectedExitGroupID })
+      message.success('出口组关联创建成功')
+      setRelationModalOpen(false)
+      setSelectedExitGroupID(undefined)
+      await loadData(true)
+    } catch (error) {
+      message.error(getErrorMessage(error, '创建关联失败'))
+    } finally {
+      setRelationSubmitting(false)
+    }
+  }
+
+  const handleToggleRelation = async (relation: NodeGroupRelation) => {
+    try {
+      await nodeGroupApi.toggleRelation(relation.id)
+      message.success(relation.is_enabled ? '关联已禁用' : '关联已启用')
+      await loadData(true)
+    } catch (error) {
+      message.error(getErrorMessage(error, '切换关联状态失败'))
+    }
+  }
+
+  const handleDeleteRelation = async (relation: NodeGroupRelation) => {
+    Modal.confirm({
+      title: '删除关联',
+      content: '删除后该入口组将不能再使用此出口组，确认继续吗？',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await nodeGroupApi.deleteRelation(relation.id)
+          message.success('关联已删除')
+          await loadData(true)
+        } catch (error) {
+          message.error(getErrorMessage(error, '删除关联失败'))
+        }
+      },
+    })
   }
 
   const summary = useMemo(() => {
@@ -347,6 +428,57 @@ const NodeGroupDetail = () => {
     [buildTunnelDetailPath, navigate],
   )
 
+  const relationColumns = useMemo<TableProps<NodeGroupRelation>['columns']>(
+    () => [
+      {
+        title: group?.type === 'entry' ? '出口组' : '入口组',
+        key: 'linked_group',
+        render: (_: unknown, record: NodeGroupRelation) => {
+          if (group?.type === 'entry') {
+            const linked = record.exit_group
+            return linked?.name ?? `#${record.exit_group_id}`
+          }
+          const linked = record.entry_group
+          return linked?.name ?? `#${record.entry_group_id}`
+        },
+      },
+      {
+        title: '状态',
+        dataIndex: 'is_enabled',
+        key: 'is_enabled',
+        width: 110,
+        render: (enabled: boolean) =>
+          enabled ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
+      },
+      {
+        title: '创建时间',
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: (value: string) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 160,
+        render: (_: unknown, record: NodeGroupRelation) =>
+          group?.type === 'entry' ? (
+            <Space size="small">
+              <Button type="link" onClick={() => void handleToggleRelation(record)}>
+                {record.is_enabled ? '禁用' : '启用'}
+              </Button>
+              <Button type="link" danger onClick={() => void handleDeleteRelation(record)}>
+                删除
+              </Button>
+            </Space>
+          ) : (
+            '-'
+          ),
+      },
+    ],
+    [group?.type],
+  )
+
   const tabItems = useMemo<TabsProps['items']>(() => {
     const config = group?.config
     const descriptionRows = [
@@ -447,8 +579,33 @@ const NodeGroupDetail = () => {
           />
         ),
       },
+      {
+        key: 'relations',
+        label: group?.type === 'entry' ? `关联出口组 (${relations.length})` : `关联入口组 (${relations.length})`,
+        children: (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            {group?.type === 'entry' ? (
+              <Button
+                type="primary"
+                onClick={() => {
+                  setSelectedExitGroupID(undefined)
+                  setRelationModalOpen(true)
+                }}
+              >
+                关联出口组
+              </Button>
+            ) : null}
+            <Table<NodeGroupRelation>
+              rowKey="id"
+              dataSource={relations}
+              columns={relationColumns}
+              pagination={{ pageSize: 10, showSizeChanger: true }}
+            />
+          </Space>
+        ),
+      },
     ]
-  }, [group, nodeColumns, tunnelColumns, tunnels, nodes])
+  }, [group, nodeColumns, tunnelColumns, tunnels, nodes, relations, relationColumns])
 
   if (!Number.isFinite(groupID) || groupID <= 0) {
     return (
@@ -523,6 +680,39 @@ const NodeGroupDetail = () => {
       <Card loading={loading}>
         <Tabs items={tabItems} />
       </Card>
+
+      <Modal
+        title="关联出口组"
+        open={relationModalOpen}
+        onCancel={() => {
+          if (!relationSubmitting) {
+            setRelationModalOpen(false)
+          }
+        }}
+        onOk={() => void handleCreateRelation()}
+        confirmLoading={relationSubmitting}
+        okText="确认关联"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Typography.Text type="secondary">
+            仅显示已启用且未关联的出口组。
+          </Typography.Text>
+          <Select<number>
+            value={selectedExitGroupID}
+            onChange={(value) => setSelectedExitGroupID(value)}
+            options={availableExitGroups.map((item) => ({
+              label: `${item.name} (#${item.id})`,
+              value: item.id,
+            }))}
+            placeholder={availableExitGroups.length > 0 ? '请选择出口组' : '暂无可关联的出口组'}
+            style={{ width: '100%' }}
+            showSearch
+            optionFilterProp="label"
+          />
+        </Space>
+      </Modal>
     </Space>
   )
 }

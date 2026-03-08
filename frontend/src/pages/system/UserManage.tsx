@@ -1,5 +1,6 @@
 import {
   EditOutlined,
+  MoreOutlined,
   ReloadOutlined,
   RetweetOutlined,
   StopOutlined,
@@ -7,14 +8,16 @@ import {
 import {
   Alert,
   Button,
+  Dropdown,
   Form,
   InputNumber,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
   Tag,
+  Tooltip,
+  Typography,
   message,
 } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -209,8 +212,10 @@ const UserManage = () => {
 
       <Table<AdminUserRecord>
         rowKey="id"
+        size="small"
         loading={loading}
         dataSource={users}
+        scroll={{ x: 1220 }}
         pagination={{
           current: page,
           pageSize,
@@ -223,9 +228,31 @@ const UserManage = () => {
           },
         }}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
-          { title: '用户名', dataIndex: 'username', width: 130 },
-          { title: '邮箱', dataIndex: 'email', width: 220 },
+          { title: 'ID', dataIndex: 'id', width: 64 },
+          {
+            title: '用户名',
+            dataIndex: 'username',
+            width: 140,
+            render: (value: string) => (
+              <Tooltip title={value}>
+                <Typography.Text ellipsis style={{ maxWidth: 120 }}>
+                  {value}
+                </Typography.Text>
+              </Tooltip>
+            ),
+          },
+          {
+            title: '邮箱',
+            dataIndex: 'email',
+            width: 210,
+            render: (value: string) => (
+              <Tooltip title={value}>
+                <Typography.Text ellipsis style={{ maxWidth: 190 }}>
+                  {value}
+                </Typography.Text>
+              </Tooltip>
+            ),
+          },
           {
             title: '角色',
             dataIndex: 'role',
@@ -257,81 +284,102 @@ const UserManage = () => {
           },
           {
             title: '流量(已用/配额)',
-            width: 220,
+            width: 190,
             render: (_, record) =>
               `${formatTraffic(record.traffic_used)} / ${formatTraffic(record.traffic_quota)}`,
           },
           {
             title: 'Telegram',
-            width: 220,
-            render: (_, record) =>
-              record.telegram_username
+            width: 150,
+            render: (_, record) => {
+              const telegram = record.telegram_username
                 ? `@${record.telegram_username}`
                 : record.telegram_id
                   ? record.telegram_id
-                  : '-',
+                  : '-'
+              return (
+                <Tooltip title={telegram}>
+                  <Typography.Text ellipsis style={{ maxWidth: 130 }}>
+                    {telegram}
+                  </Typography.Text>
+                </Tooltip>
+              )
+            },
           },
           {
             title: '操作',
-            width: 340,
+            width: 220,
             fixed: 'right',
+            align: 'center',
             render: (_, record) => (
-              <Space size={4}>
+              <Space size={6} style={{ whiteSpace: 'nowrap' }}>
                 <Button
-                  type="link"
+                  size="small"
                   icon={<EditOutlined />}
                   onClick={() => openRoleModal(record)}
                 >
-                  编辑角色
+                  角色
                 </Button>
                 <Button
-                  type="link"
+                  size="small"
                   icon={<EditOutlined />}
                   onClick={() => openVipModal(record)}
                 >
-                  修改 VIP
+                  VIP
                 </Button>
-                <Button
-                  type="link"
-                  icon={<StopOutlined />}
-                  loading={actionLoading === `status-${record.id}`}
-                  onClick={() =>
-                    void runAction(
-                      `status-${record.id}`,
-                      async () => {
-                        await userAdminApi.updateStatus(
-                          record.id,
-                          record.status === 'banned' ? 'normal' : 'banned',
+                <Dropdown
+                  trigger={['click']}
+                  menu={{
+                    items: [
+                      {
+                        key: 'toggle',
+                        icon: <StopOutlined />,
+                        label: record.status === 'banned' ? '解封' : '封禁',
+                      },
+                      {
+                        key: 'reset',
+                        icon: <RetweetOutlined />,
+                        label: '重置流量',
+                      },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === 'toggle') {
+                        void runAction(
+                          `status-${record.id}`,
+                          async () => {
+                            await userAdminApi.updateStatus(
+                              record.id,
+                              record.status === 'banned' ? 'normal' : 'banned',
+                            )
+                          },
+                          record.status === 'banned' ? '用户已解封' : '用户已封禁',
                         )
-                      },
-                      record.status === 'banned' ? '用户已解封' : '用户已封禁',
-                    )
-                  }
+                        return
+                      }
+                      if (key === 'reset') {
+                        Modal.confirm({
+                          title: '重置用户流量',
+                          content: `确认重置用户「${record.username}」的流量吗？`,
+                          okText: '重置',
+                          cancelText: '取消',
+                          onOk: async () => {
+                            await runAction(
+                              `reset-${record.id}`,
+                              async () => {
+                                await trafficApi.resetQuota(record.id)
+                              },
+                              '用户流量已重置',
+                            )
+                          },
+                        })
+                      }
+                    },
+                  }}
                 >
-                  {record.status === 'banned' ? '解封' : '封禁'}
-                </Button>
-                <Popconfirm
-                  title="确定重置该用户流量吗？"
-                  okText="重置"
-                  cancelText="取消"
-                  onConfirm={() =>
-                    void runAction(
-                      `reset-${record.id}`,
-                      async () => {
-                        await trafficApi.resetQuota(record.id)
-                      },
-                      '用户流量已重置',
-                    )
-                  }
-                >
-                  <Button
-                    type="link"
-                    icon={<RetweetOutlined />}
-                    loading={actionLoading === `reset-${record.id}`}
-                  >
-                    重置流量
+                  <Button size="small" icon={<MoreOutlined />}>
+                    更多
                   </Button>
-                </Popconfirm>
+                </Dropdown>
               </Space>
             ),
           },

@@ -1,27 +1,32 @@
 import {
   DeleteOutlined,
+  EyeOutlined,
+  MoreOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
+  Dropdown,
   Form,
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
@@ -31,6 +36,7 @@ import type {
   ForwardTarget,
   LoadBalanceStrategy,
   NodeGroup,
+  NodeGroupRelation,
   Tunnel,
   TunnelConfig,
 } from '../../types/nodeGroup'
@@ -56,6 +62,7 @@ type TunnelFormValues = {
 const TunnelList = () => {
   const user = useAuthStore((state) => state.user)
   const isAdmin = user?.role === 'admin'
+  const navigate = useNavigate()
 
   usePageTitle(isAdmin ? '隧道管理' : '我的隧道')
 
@@ -64,6 +71,8 @@ const TunnelList = () => {
   const [groups, setGroups] = useState<NodeGroup[]>([])
   const [open, setOpen] = useState<boolean>(false)
   const [submitting, setSubmitting] = useState<boolean>(false)
+  const [relationsLoading, setRelationsLoading] = useState<boolean>(false)
+  const [entryRelations, setEntryRelations] = useState<NodeGroupRelation[]>([])
   const [form] = Form.useForm<TunnelFormValues>()
 
   const loadData = useCallback(async () => {
@@ -109,6 +118,66 @@ const TunnelList = () => {
   )
 
   const exitGroupId = Form.useWatch('exit_group_id', form)
+  const entryGroupId = Form.useWatch('entry_group_id', form)
+
+  const selectedEntryGroup = useMemo(
+    () => groups.find((group) => group.id === entryGroupId),
+    [groups, entryGroupId],
+  )
+
+  const entryRequiresExitGroup = Boolean(
+    selectedEntryGroup?.config?.entry_config?.require_exit_group,
+  )
+
+  const relatedExitGroupIDs = useMemo(
+    () =>
+      entryRelations
+        .filter((item) => item.is_enabled && item.entry_group_id === entryGroupId)
+        .map((item) => item.exit_group_id),
+    [entryRelations, entryGroupId],
+  )
+
+  const filteredExitGroups = useMemo(() => {
+    if (!entryGroupId) {
+      return exitGroups
+    }
+    if (relatedExitGroupIDs.length === 0) {
+      return []
+    }
+    const idSet = new Set(relatedExitGroupIDs)
+    return exitGroups.filter((item) => idSet.has(item.value))
+  }, [entryGroupId, exitGroups, relatedExitGroupIDs])
+
+  useEffect(() => {
+    if (!open || !entryGroupId) {
+      setEntryRelations([])
+      return
+    }
+
+    const run = async () => {
+      setRelationsLoading(true)
+      try {
+        const relations = await nodeGroupApi.listRelations(entryGroupId)
+        setEntryRelations(relations ?? [])
+      } catch (error) {
+        setEntryRelations([])
+        message.error(getErrorMessage(error, '加载节点组关联失败'))
+      } finally {
+        setRelationsLoading(false)
+      }
+    }
+
+    void run()
+  }, [entryGroupId, open])
+
+  useEffect(() => {
+    if (!entryGroupId || !exitGroupId) {
+      return
+    }
+    if (relatedExitGroupIDs.length === 0 || !relatedExitGroupIDs.includes(exitGroupId)) {
+      form.setFieldValue('exit_group_id', undefined)
+    }
+  }, [entryGroupId, exitGroupId, form, relatedExitGroupIDs])
 
   const handleCreate = async (values: TunnelFormValues) => {
     setSubmitting(true)
@@ -118,6 +187,15 @@ const TunnelList = () => {
         ip_type: values.ip_type,
         enable_proxy_protocol: values.enable_proxy_protocol,
         forward_targets: values.forward_targets || [],
+      }
+
+      if (entryRequiresExitGroup && !values.exit_group_id) {
+        message.error('当前入口节点组要求绑定出口节点组，请先选择出口节点组')
+        return
+      }
+      if (values.exit_group_id && !relatedExitGroupIDs.includes(values.exit_group_id)) {
+        message.error('所选出口节点组未与入口节点组建立启用关联')
+        return
       }
 
       await tunnelApi.create({
@@ -206,46 +284,80 @@ const TunnelList = () => {
     >
       <Table<Tunnel>
         rowKey="id"
+        size="small"
         loading={loading}
         dataSource={list}
         pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-        scroll={{ x: 1400 }}
+        scroll={{ x: 1220 }}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70, fixed: 'left' },
-          { title: '名称', dataIndex: 'name', width: 160, fixed: 'left' },
+          { title: 'ID', dataIndex: 'id', width: 64, fixed: 'left' },
+          {
+            title: '名称',
+            dataIndex: 'name',
+            width: 170,
+            fixed: 'left',
+            render: (value: string, record) => (
+              <Button
+                type="link"
+                style={{ paddingInline: 0, maxWidth: '100%', justifyContent: 'flex-start' }}
+                onClick={() => navigate(`/tunnels/${record.id}`)}
+              >
+                <Tooltip title={value}>
+                  <Typography.Text ellipsis style={{ maxWidth: 145 }}>
+                    {value}
+                  </Typography.Text>
+                </Tooltip>
+              </Button>
+            ),
+          },
           {
             title: '协议',
             dataIndex: 'protocol',
-            width: 90,
+            width: 84,
             render: (v: string) => <Tag color="blue">{v.toUpperCase()}</Tag>,
           },
           {
             title: '入口组',
-            width: 140,
-            render: (_, record) => record.entry_group?.name || `#${record.entry_group_id}`,
+            width: 130,
+            render: (_, record) => {
+              const value = record.entry_group?.name || `#${record.entry_group_id}`
+              return (
+                <Tooltip title={value}>
+                  <Typography.Text ellipsis style={{ maxWidth: 110 }}>
+                    {value}
+                  </Typography.Text>
+                </Tooltip>
+              )
+            },
           },
           {
             title: '出口组',
-            width: 140,
+            width: 130,
             render: (_, record) =>
               record.exit_group_id
-                ? record.exit_group?.name || `#${record.exit_group_id}`
+                ? (
+                  <Tooltip title={record.exit_group?.name || `#${record.exit_group_id}`}>
+                    <Typography.Text ellipsis style={{ maxWidth: 110 }}>
+                      {record.exit_group?.name || `#${record.exit_group_id}`}
+                    </Typography.Text>
+                  </Tooltip>
+                )
                 : <Tag>直连</Tag>,
           },
           {
             title: '监听',
-            width: 180,
+            width: 150,
             render: (_, record) => `${record.listen_host}:${record.listen_port || '自动'}`,
           },
           {
             title: '目标',
-            width: 180,
+            width: 170,
             render: (_, record) => `${record.remote_host}:${record.remote_port}`,
           },
           {
             title: '状态',
             dataIndex: 'status',
-            width: 100,
+            width: 88,
             render: (v: string) => {
               const colors: Record<string, string> = {
                 running: 'green',
@@ -258,44 +370,74 @@ const TunnelList = () => {
           {
             title: '创建时间',
             dataIndex: 'created_at',
-            width: 170,
+            width: 158,
             render: (v: string) => formatDateTime(v),
           },
           {
             title: '操作',
             fixed: 'right',
-            width: 240,
+            width: 220,
+            align: 'center',
             render: (_, record) => (
-              <Space size="small">
-                {record.status === 'running' ? (
+              <Space size={6} style={{ whiteSpace: 'nowrap' }}>
+                {record.status === 'running'
+                  ? (
                   <Button
-                    type="link"
                     size="small"
                     icon={<PauseCircleOutlined />}
                     onClick={() => void changeStatus(record.id, 'stop', '隧道已停止')}
                   >
                     停止
                   </Button>
-                ) : (
+                  )
+                  : (
                   <Button
-                    type="link"
+                    type="primary"
                     size="small"
                     icon={<PlayCircleOutlined />}
                     onClick={() => void changeStatus(record.id, 'start', '隧道已启动')}
                   >
                     启动
                   </Button>
-                )}
-                <Popconfirm
-                  title="确定删除该隧道吗？"
-                  okText="删除"
-                  cancelText="取消"
-                  onConfirm={() => void handleDelete(record.id)}
+                  )}
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={() => navigate(`/tunnels/${record.id}`)}
                 >
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                    删除
+                  详情
+                </Button>
+                <Dropdown
+                  trigger={['click']}
+                  menu={{
+                    items: [
+                      {
+                        key: 'delete',
+                        icon: <DeleteOutlined />,
+                        label: '删除',
+                        danger: true,
+                      },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === 'delete') {
+                        Modal.confirm({
+                          title: '删除隧道',
+                          content: `确认删除隧道「${record.name}」吗？`,
+                          okText: '删除',
+                          okType: 'danger',
+                          cancelText: '取消',
+                          onOk: async () => {
+                            await handleDelete(record.id)
+                          },
+                        })
+                      }
+                    },
+                  }}
+                >
+                  <Button size="small" icon={<MoreOutlined />}>
+                    更多
                   </Button>
-                </Popconfirm>
+                </Dropdown>
               </Space>
             ),
           },
@@ -378,17 +520,41 @@ const TunnelList = () => {
               />
             </Form.Item>
 
-            <Form.Item label="出口节点组" name="exit_group_id" tooltip="可选，不选择则为直连模式">
+            <Form.Item
+              label="出口节点组"
+              name="exit_group_id"
+              tooltip="可选，不选择则为直连模式"
+              rules={[
+                {
+                  validator: async (_, value) => {
+                    if (entryRequiresExitGroup && !value) {
+                      throw new Error('当前入口节点组要求选择出口节点组')
+                    }
+                  },
+                },
+              ]}
+            >
               <Select
                 style={{ width: 280 }}
-                options={exitGroups}
+                options={filteredExitGroups}
                 showSearch
                 optionFilterProp="label"
-                placeholder="可选，不选择则直连"
+                placeholder={entryRequiresExitGroup ? '必选：请选择已关联出口组' : '可选，不选择则直连'}
                 allowClear
+                loading={relationsLoading}
               />
             </Form.Item>
           </Space>
+
+          {entryGroupId && entryRequiresExitGroup && filteredExitGroups.length === 0 ? (
+            <Alert
+              style={{ marginBottom: 16 }}
+              type="warning"
+              showIcon
+              message="当前入口组要求出口组，但暂无可用关联"
+              description="请先在节点组管理中为该入口组创建并启用出口组关联。"
+            />
+          ) : null}
 
           <Space wrap className="w-full">
             <Form.Item label="监听地址" name="listen_host" tooltip="为空则监听所有地址">

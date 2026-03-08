@@ -252,6 +252,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		{
 			nodeGroups.POST("", nodeGroupHandler.Create)
 			nodeGroups.GET("", nodeGroupHandler.List)
+			nodeGroups.GET("/accessible-nodes", nodeGroupHandler.ListAccessibleNodes)
 			nodeGroups.GET("/:id", nodeGroupHandler.Get)
 			nodeGroups.PUT("/:id", nodeGroupHandler.Update)
 			nodeGroups.DELETE("/:id", nodeGroupHandler.Delete)

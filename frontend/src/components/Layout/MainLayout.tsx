@@ -53,9 +53,14 @@ const getUserMenuEntries = (): MenuEntry[] => [
     icon: <DashboardOutlined />,
   },
   {
-    key: '/node-groups',
-    label: '节点组管理',
+    key: '/user/my-nodes',
+    label: '我的节点',
     icon: <ClusterOutlined />,
+  },
+  {
+    key: '/user/node-status',
+    label: '节点状态',
+    icon: <WifiOutlined />,
   },
   {
     key: '/user/tunnels',

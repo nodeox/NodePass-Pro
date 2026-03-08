@@ -76,6 +76,7 @@ const isAuthPath = (url: string): boolean =>
 const CSRF_HEADER = 'x-csrf-token'
 let csrfToken: string | null = null
 let csrfTokenPromise: Promise<string | null> | null = null
+let loginRedirecting = false
 
 const isUnsafeMethod = (method?: string): boolean => {
   const normalized = (method ?? 'get').toLowerCase()
@@ -141,9 +142,14 @@ const ensureCSRFToken = async (): Promise<string | null> => {
 }
 
 const redirectToLogin = (): void => {
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login'
+  if (loginRedirecting) {
+    return
   }
+  if (window.location.pathname === '/login') {
+    return
+  }
+  loginRedirecting = true
+  window.location.replace('/login')
 }
 
 export const unwrapData = <T>(response: AxiosResponse<ApiSuccessResponse<T>>): T =>

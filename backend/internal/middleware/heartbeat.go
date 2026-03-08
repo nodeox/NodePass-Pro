@@ -1,9 +1,6 @@
 package middleware
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,15 +13,15 @@ import (
 	"go.uber.org/zap"
 )
 
-const heartbeatNodeIDContextKey = "__heartbeat_node_id"
-
-// HeartbeatRateLimit 心跳接口限流（优先按 node_id，回退按 IP）。
+// HeartbeatRateLimit 心跳接口限流（按 IP 限流，避免 DoS 攻击）。
+// 注意：不按 node_id 限流，因为 node_id 可以从公开 API 获取，
+// 攻击者可以伪造 node_id 消耗限流配额，影响真实节点心跳。
+// 改为按 IP 限流，配合 token 验证，可以有效防止 DoS 攻击。
 func HeartbeatRateLimit(qps float64, burst int) gin.HandlerFunc {
 	return RateLimitBy(qps, burst, func(c *gin.Context) string {
-		if nodeID := extractHeartbeatNodeID(c); nodeID != "" {
-			return "node:" + nodeID
-		}
-		return "ip:" + strings.TrimSpace(c.ClientIP())
+		// 只按 IP 限流，不按 node_id
+		// 这样可以防止攻击者通过伪造 node_id 来消耗特定节点的限流配额
+		return "heartbeat:ip:" + strings.TrimSpace(c.ClientIP())
 	})
 }
 
@@ -107,42 +104,4 @@ func HeartbeatReplayProtection() gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-func extractHeartbeatNodeID(c *gin.Context) string {
-	if c == nil {
-		return ""
-	}
-
-	if cached, ok := c.Get(heartbeatNodeIDContextKey); ok {
-		if value, ok := cached.(string); ok {
-			return strings.TrimSpace(value)
-		}
-	}
-
-	if c.Request == nil || c.Request.Body == nil {
-		return ""
-	}
-
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		return ""
-	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	if len(body) == 0 {
-		return ""
-	}
-
-	var payload struct {
-		NodeID string `json:"node_id"`
-	}
-	if err = json.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-
-	nodeID := strings.TrimSpace(payload.NodeID)
-	if nodeID != "" {
-		c.Set(heartbeatNodeIDContextKey, nodeID)
-	}
-	return nodeID
 }

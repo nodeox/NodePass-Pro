@@ -113,6 +113,25 @@ func (h *NodeGroupHandler) List(c *gin.Context) {
 	}, "获取节点组列表成功")
 }
 
+// ListAccessibleNodes GET /api/v1/node-groups/accessible-nodes
+func (h *NodeGroupHandler) ListAccessibleNodes(c *gin.Context) {
+	userID := getNodeGroupUserID(c)
+	if userID == 0 {
+		utils.ErrorResponse(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	items, err := h.service.ListAccessibleNodeGroups(userID)
+	if err != nil {
+		writeNodeGroupServiceError(c, err, "LIST_ACCESSIBLE_NODE_GROUPS_FAILED")
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, gin.H{
+		"items": items,
+	}, "获取可访问节点成功")
+}
+
 // Get GET /api/v1/node-groups/:id
 func (h *NodeGroupHandler) Get(c *gin.Context) {
 	userID := getNodeGroupUserID(c)

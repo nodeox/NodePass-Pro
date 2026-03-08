@@ -62,7 +62,7 @@ const CreateNodeGroup = () => {
       allowed_protocols: ['tcp', 'udp'],
       port_start: 1,
       port_end: 65535,
-      require_exit_group: true,
+      require_exit_group: false,
       traffic_multiplier: 1,
       dns_load_balance: false,
       load_balance_strategy: 'round_robin',
@@ -123,7 +123,7 @@ const CreateNodeGroup = () => {
           ...(values.type === 'entry'
             ? {
                 entry_config: {
-                  require_exit_group: values.require_exit_group ?? true,
+                  require_exit_group: values.require_exit_group ?? false,
                   traffic_multiplier: values.traffic_multiplier ?? 1,
                   dns_load_balance: values.dns_load_balance ?? false,
                 },

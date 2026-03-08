@@ -16,6 +16,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
@@ -140,13 +141,18 @@ const NodeGroupsPage = () => {
         title: '名称',
         dataIndex: 'name',
         key: 'name',
+        width: 220,
         render: (_: string, record: NodeGroup) => (
           <Button
             type="link"
-            style={{ paddingInline: 0 }}
+            style={{ paddingInline: 0, maxWidth: '100%', justifyContent: 'flex-start' }}
             onClick={() => navigate(`/node-groups/${record.id}`)}
           >
-            {record.name}
+            <Tooltip title={record.name}>
+              <Typography.Text ellipsis style={{ maxWidth: 190 }}>
+                {record.name}
+              </Typography.Text>
+            </Tooltip>
           </Button>
         ),
       },
@@ -214,20 +220,17 @@ const NodeGroupsPage = () => {
               icon={<EyeOutlined />}
               onClick={() => navigate(`/node-groups/${record.id}`)}
             >
-              查看详情
-            </Button>
-            <Button
-              size="small"
-              icon={<PoweroffOutlined />}
-              type={record.is_enabled ? 'default' : 'primary'}
-              onClick={() => void handleToggle(record)}
-            >
-              {record.is_enabled ? '禁用' : '启用'}
+              详情
             </Button>
             <Dropdown
               trigger={['click']}
               menu={{
                 items: [
+                  {
+                    key: 'toggle',
+                    icon: <PoweroffOutlined />,
+                    label: record.is_enabled ? '禁用' : '启用',
+                  },
                   {
                     key: 'edit',
                     icon: <EditOutlined />,
@@ -241,6 +244,10 @@ const NodeGroupsPage = () => {
                   },
                 ],
                 onClick: ({ key }) => {
+                  if (key === 'toggle') {
+                    void handleToggle(record)
+                    return
+                  }
                   if (key === 'edit') {
                     navigate(`/node-groups/${record.id}/edit`)
                     return
@@ -259,7 +266,7 @@ const NodeGroupsPage = () => {
         ),
       },
     ],
-    [navigate],
+    [navigate, handleToggle, handleDelete],
   )
 
   return (
