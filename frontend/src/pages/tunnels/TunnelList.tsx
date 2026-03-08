@@ -1,5 +1,7 @@
 import {
+  CopyOutlined,
   DeleteOutlined,
+  EditOutlined,
   EyeOutlined,
   MoreOutlined,
   PauseCircleOutlined,
@@ -70,9 +72,12 @@ const TunnelList = () => {
   const [loading, setLoading] = useState<boolean>(false)
   const [groups, setGroups] = useState<NodeGroup[]>([])
   const [open, setOpen] = useState<boolean>(false)
+  const [editingTunnel, setEditingTunnel] = useState<Tunnel | null>(null)
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [relationsLoading, setRelationsLoading] = useState<boolean>(false)
   const [entryRelations, setEntryRelations] = useState<NodeGroupRelation[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchLoading, setBatchLoading] = useState<boolean>(false)
   const [form] = Form.useForm<TunnelFormValues>()
 
   const loadData = useCallback(async () => {
@@ -198,24 +203,43 @@ const TunnelList = () => {
         return
       }
 
-      await tunnelApi.create({
-        name: values.name.trim(),
-        description: values.description?.trim() || undefined,
-        protocol: values.protocol,
-        entry_group_id: values.entry_group_id,
-        exit_group_id: values.exit_group_id || undefined,
-        listen_host: values.listen_host?.trim() || '0.0.0.0',
-        listen_port: values.listen_port || undefined,
-        remote_host: values.remote_host.trim(),
-        remote_port: values.remote_port,
-        config,
-      })
-      message.success('隧道创建成功')
+      if (editingTunnel) {
+        // 编辑模式
+        await tunnelApi.update(editingTunnel.id, {
+          name: values.name.trim(),
+          description: values.description?.trim() || undefined,
+          protocol: values.protocol,
+          entry_group_id: values.entry_group_id,
+          exit_group_id: values.exit_group_id || undefined,
+          listen_host: values.listen_host?.trim() || '0.0.0.0',
+          listen_port: values.listen_port || undefined,
+          remote_host: values.remote_host.trim(),
+          remote_port: values.remote_port,
+          config,
+        })
+        message.success('隧道更新成功')
+      } else {
+        // 创建模式
+        await tunnelApi.create({
+          name: values.name.trim(),
+          description: values.description?.trim() || undefined,
+          protocol: values.protocol,
+          entry_group_id: values.entry_group_id,
+          exit_group_id: values.exit_group_id || undefined,
+          listen_host: values.listen_host?.trim() || '0.0.0.0',
+          listen_port: values.listen_port || undefined,
+          remote_host: values.remote_host.trim(),
+          remote_port: values.remote_port,
+          config,
+        })
+        message.success('隧道创建成功')
+      }
       setOpen(false)
+      setEditingTunnel(null)
       form.resetFields()
       await loadData()
     } catch (error) {
-      message.error(getErrorMessage(error, '创建隧道失败'))
+      message.error(getErrorMessage(error, editingTunnel ? '更新隧道失败' : '创建隧道失败'))
     } finally {
       setSubmitting(false)
     }
@@ -259,7 +283,117 @@ const TunnelList = () => {
       enable_proxy_protocol: false,
       forward_targets: [],
     })
+    setEditingTunnel(null)
     setOpen(true)
+  }
+
+  const openEditModal = (tunnel: Tunnel) => {
+    setEditingTunnel(tunnel)
+    form.setFieldsValue({
+      name: tunnel.name,
+      description: tunnel.description || undefined,
+      protocol: tunnel.protocol,
+      entry_group_id: tunnel.entry_group_id,
+      exit_group_id: tunnel.exit_group_id || undefined,
+      listen_host: tunnel.listen_host,
+      listen_port: tunnel.listen_port || undefined,
+      remote_host: tunnel.remote_host,
+      remote_port: tunnel.remote_port,
+      load_balance_strategy: tunnel.config?.load_balance_strategy || 'round_robin',
+      ip_type: tunnel.config?.ip_type || 'auto',
+      enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
+      forward_targets: tunnel.config?.forward_targets || [],
+    })
+    setOpen(true)
+  }
+
+  const openCopyModal = (tunnel: Tunnel) => {
+    setEditingTunnel(null)
+    form.setFieldsValue({
+      name: `${tunnel.name} (副本)`,
+      description: tunnel.description || undefined,
+      protocol: tunnel.protocol,
+      entry_group_id: tunnel.entry_group_id,
+      exit_group_id: tunnel.exit_group_id || undefined,
+      listen_host: tunnel.listen_host,
+      listen_port: undefined, // 端口留空自动分配
+      remote_host: tunnel.remote_host,
+      remote_port: tunnel.remote_port,
+      load_balance_strategy: tunnel.config?.load_balance_strategy || 'round_robin',
+      ip_type: tunnel.config?.ip_type || 'auto',
+      enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
+      forward_targets: tunnel.config?.forward_targets || [],
+    })
+    setOpen(true)
+  }
+
+  const handleBatchStart = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要启动的隧道')
+      return
+    }
+    setBatchLoading(true)
+    try {
+      await Promise.all(
+        selectedRowKeys.map((id) => tunnelApi.start(Number(id)))
+      )
+      message.success(`已启动 ${selectedRowKeys.length} 个隧道`)
+      setSelectedRowKeys([])
+      await loadData()
+    } catch (error) {
+      message.error(getErrorMessage(error, '批量启动失败'))
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleBatchStop = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要停止的隧道')
+      return
+    }
+    setBatchLoading(true)
+    try {
+      await Promise.all(
+        selectedRowKeys.map((id) => tunnelApi.stop(Number(id)))
+      )
+      message.success(`已停止 ${selectedRowKeys.length} 个隧道`)
+      setSelectedRowKeys([])
+      await loadData()
+    } catch (error) {
+      message.error(getErrorMessage(error, '批量停止失败'))
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的隧道')
+      return
+    }
+    Modal.confirm({
+      title: '批量删除隧道',
+      content: `确认删除选中的 ${selectedRowKeys.length} 个隧道吗？此操作不可恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setBatchLoading(true)
+        try {
+          await Promise.all(
+            selectedRowKeys.map((id) => tunnelApi.delete(Number(id)))
+          )
+          message.success(`已删除 ${selectedRowKeys.length} 个隧道`)
+          setSelectedRowKeys([])
+          await loadData()
+        } catch (error) {
+          message.error(getErrorMessage(error, '批量删除失败'))
+        } finally {
+          setBatchLoading(false)
+        }
+      },
+    })
   }
 
   return (
@@ -272,6 +406,35 @@ const TunnelList = () => {
       }
       extra={
         <Space>
+          {selectedRowKeys.length > 0 && (
+            <>
+              <Typography.Text type="secondary">
+                已选 {selectedRowKeys.length} 项
+              </Typography.Text>
+              <Button
+                icon={<PlayCircleOutlined />}
+                onClick={() => void handleBatchStart()}
+                loading={batchLoading}
+              >
+                批量启动
+              </Button>
+              <Button
+                icon={<PauseCircleOutlined />}
+                onClick={() => void handleBatchStop()}
+                loading={batchLoading}
+              >
+                批量停止
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={handleBatchDelete}
+                loading={batchLoading}
+              >
+                批量删除
+              </Button>
+            </>
+          )}
           <Typography.Text type="secondary">共 {list.length} 条</Typography.Text>
           <Button icon={<ReloadOutlined />} onClick={() => void loadData()} loading={loading}>
             刷新
@@ -287,6 +450,10 @@ const TunnelList = () => {
         size="small"
         loading={loading}
         dataSource={list}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: setSelectedRowKeys,
+        }}
         pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
         scroll={{ x: 1220 }}
         columns={[
@@ -376,7 +543,7 @@ const TunnelList = () => {
           {
             title: '操作',
             fixed: 'right',
-            width: 220,
+            width: 280,
             align: 'center',
             render: (_, record) => (
               <Space size={6} style={{ whiteSpace: 'nowrap' }}>
@@ -412,6 +579,19 @@ const TunnelList = () => {
                   menu={{
                     items: [
                       {
+                        key: 'edit',
+                        icon: <EditOutlined />,
+                        label: '编辑',
+                      },
+                      {
+                        key: 'copy',
+                        icon: <CopyOutlined />,
+                        label: '复制',
+                      },
+                      {
+                        type: 'divider',
+                      },
+                      {
                         key: 'delete',
                         icon: <DeleteOutlined />,
                         label: '删除',
@@ -419,7 +599,11 @@ const TunnelList = () => {
                       },
                     ],
                     onClick: ({ key }) => {
-                      if (key === 'delete') {
+                      if (key === 'edit') {
+                        openEditModal(record)
+                      } else if (key === 'copy') {
+                        openCopyModal(record)
+                      } else if (key === 'delete') {
                         Modal.confirm({
                           title: '删除隧道',
                           content: `确认删除隧道「${record.name}」吗？`,
@@ -445,9 +629,12 @@ const TunnelList = () => {
       />
 
       <Modal
-        title="创建隧道"
+        title={editingTunnel ? '编辑隧道' : '创建隧道'}
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={() => {
+          setOpen(false)
+          setEditingTunnel(null)
+        }}
         onOk={() => void form.submit()}
         confirmLoading={submitting}
         width={900}

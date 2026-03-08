@@ -26,6 +26,7 @@ import type {
   BenefitCodeListQuery,
   BenefitCodeRecord,
   BenefitCodeRedeemResult,
+  ChangeEmailPayload,
   ChangePasswordPayload,
   CreateVipLevelPayload,
   LoginPayload,
@@ -33,6 +34,8 @@ import type {
   PaginationQuery,
   PaginationResult,
   RegisterPayload,
+  SendEmailChangeCodePayload,
+  SendEmailChangeCodeResult,
   TrafficQuota,
   TrafficRecordItem,
   TrafficRecordsQuery,
@@ -292,6 +295,16 @@ export const authApi = {
       .put<ApiSuccessResponse<null>>('/auth/password', payload)
       .then(unwrapData),
 
+  sendEmailChangeCode: (payload: SendEmailChangeCodePayload) =>
+    apiClient
+      .post<ApiSuccessResponse<SendEmailChangeCodeResult>>('/auth/email/code', payload)
+      .then(unwrapData),
+
+  changeEmail: (payload: ChangeEmailPayload) =>
+    apiClient
+      .put<ApiSuccessResponse<null>>('/auth/email', payload)
+      .then(unwrapData),
+
   refresh: () =>
     apiClient
       .post<ApiSuccessResponse<{ token: string }>>('/auth/refresh')
@@ -408,6 +421,11 @@ export const systemApi = {
   updateConfig: (payload: { key: string; value: string }) =>
     apiClient
       .put<ApiSuccessResponse<null>>('/system/config', payload)
+      .then(unwrapData),
+
+  updateConfigs: (payload: Array<{ key: string; value: string }>) =>
+    apiClient
+      .put<ApiSuccessResponse<null>>('/system/config', { items: payload })
       .then(unwrapData),
 
   stats: () =>

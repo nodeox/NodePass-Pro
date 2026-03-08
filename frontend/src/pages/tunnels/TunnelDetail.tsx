@@ -1,5 +1,5 @@
 import { ArrowLeftOutlined, PauseCircleOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Button, Card, Descriptions, Result, Space, Spin, Tag, Typography, message } from 'antd'
+import { Button, Card, Descriptions, Result, Space, Spin, Tag, Typography, message, Tabs } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -8,6 +8,7 @@ import { tunnelApi } from '../../services/nodeGroupApi'
 import type { Tunnel } from '../../types/nodeGroup'
 import { getErrorMessage } from '../../utils/error'
 import { formatDateTime } from '../../utils/format'
+import TunnelTrafficChart from './components/TunnelTrafficChart'
 
 const TunnelDetail = () => {
   const navigate = useNavigate()
@@ -112,39 +113,55 @@ const TunnelDetail = () => {
     >
       <Spin spinning={loading}>
         {tunnel ? (
-          <Card>
-            <Descriptions bordered column={2} size="middle">
-              <Descriptions.Item label="ID">{tunnel.id}</Descriptions.Item>
-              <Descriptions.Item label="状态">{statusTag}</Descriptions.Item>
-              <Descriptions.Item label="名称">{tunnel.name}</Descriptions.Item>
-              <Descriptions.Item label="协议">
-                <Tag color="blue">{tunnel.protocol.toUpperCase()}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="入口组">
-                {tunnel.entry_group?.name || `#${tunnel.entry_group_id}`}
-              </Descriptions.Item>
-              <Descriptions.Item label="出口组">
-                {tunnel.exit_group_id ? tunnel.exit_group?.name || `#${tunnel.exit_group_id}` : '直连'}
-              </Descriptions.Item>
-              <Descriptions.Item label="监听地址">
-                {`${tunnel.listen_host}:${tunnel.listen_port || '自动'}`}
-              </Descriptions.Item>
-              <Descriptions.Item label="远程目标">
-                {`${tunnel.remote_host}:${tunnel.remote_port}`}
-              </Descriptions.Item>
-              <Descriptions.Item label="上行流量">{tunnel.traffic_in}</Descriptions.Item>
-              <Descriptions.Item label="下行流量">{tunnel.traffic_out}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">
-                {formatDateTime(tunnel.created_at)}
-              </Descriptions.Item>
-              <Descriptions.Item label="更新时间">
-                {formatDateTime(tunnel.updated_at)}
-              </Descriptions.Item>
-              <Descriptions.Item label="说明" span={2}>
-                <Typography.Text>{tunnel.description || '-'}</Typography.Text>
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
+          <Tabs
+            defaultActiveKey="info"
+            items={[
+              {
+                key: 'info',
+                label: '基本信息',
+                children: (
+                  <Card>
+                    <Descriptions bordered column={2} size="middle">
+                      <Descriptions.Item label="ID">{tunnel.id}</Descriptions.Item>
+                      <Descriptions.Item label="状态">{statusTag}</Descriptions.Item>
+                      <Descriptions.Item label="名称">{tunnel.name}</Descriptions.Item>
+                      <Descriptions.Item label="协议">
+                        <Tag color="blue">{tunnel.protocol.toUpperCase()}</Tag>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="入口组">
+                        {tunnel.entry_group?.name || `#${tunnel.entry_group_id}`}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="出口组">
+                        {tunnel.exit_group_id ? tunnel.exit_group?.name || `#${tunnel.exit_group_id}` : '直连'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="监听地址">
+                        {`${tunnel.listen_host}:${tunnel.listen_port || '自动'}`}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="远程目标">
+                        {`${tunnel.remote_host}:${tunnel.remote_port}`}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="上行流量">{tunnel.traffic_in}</Descriptions.Item>
+                      <Descriptions.Item label="下行流量">{tunnel.traffic_out}</Descriptions.Item>
+                      <Descriptions.Item label="创建时间">
+                        {formatDateTime(tunnel.created_at)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="更新时间">
+                        {formatDateTime(tunnel.updated_at)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="说明" span={2}>
+                        <Typography.Text>{tunnel.description || '-'}</Typography.Text>
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Card>
+                ),
+              },
+              {
+                key: 'traffic',
+                label: '流量统计',
+                children: <TunnelTrafficChart tunnelId={tunnel.id} />,
+              },
+            ]}
+          />
         ) : (
           <Result status="404" title="未找到隧道" />
         )}

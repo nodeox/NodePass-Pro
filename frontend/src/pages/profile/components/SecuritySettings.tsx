@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { Button, Descriptions, Modal, message, Space, Tag } from 'antd'
 import { LogoutOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 
 import { authApi } from '../../../services/api'
 import { useAuthStore } from '../../../store/auth'
+import { getErrorMessage } from '../../../utils/error'
 
 const SecuritySettings = () => {
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
+  const logout = useAuthStore((state) => state.logout)
 
   const handleRevokeAllSessions = () => {
     Modal.confirm({
@@ -20,13 +24,11 @@ const SecuritySettings = () => {
         try {
           setLoading(true)
           await authApi.revokeAllTokens()
+          logout()
           message.success('已撤销所有登录会话，请重新登录')
-          // 清除本地存储并跳转到登录页
-          setTimeout(() => {
-            window.location.href = '/login'
-          }, 1500)
-        } catch (error: any) {
-          message.error(error.response?.data?.error?.message || '操作失败')
+          navigate('/login', { replace: true })
+        } catch (error) {
+          message.error(getErrorMessage(error, '操作失败'))
         } finally {
           setLoading(false)
         }

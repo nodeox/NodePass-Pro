@@ -69,6 +69,22 @@ export interface ChangePasswordPayload {
   new_password: string
 }
 
+export interface SendEmailChangeCodePayload {
+  password: string
+  new_email: string
+}
+
+export interface ChangeEmailPayload {
+  new_email: string
+  code: string
+}
+
+export interface SendEmailChangeCodeResult {
+  expires_at: string
+  debug_code?: string
+  sent?: boolean
+}
+
 export interface LoginResult {
   token: string
   user: User
