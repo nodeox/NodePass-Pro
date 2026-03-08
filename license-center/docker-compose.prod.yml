@@ -1,5 +1,7 @@
 version: '3.8'
 
+# 生产环境配置 - 使用预构建镜像
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -29,12 +31,8 @@ services:
         max-file: "3"
 
   license-center:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - BUILD_VERSION=${BUILD_VERSION:-0.3.0}
-    image: nodepass/license-center:${BUILD_VERSION:-0.3.0}
+    # 使用预构建镜像
+    image: ${REGISTRY:-}${REGISTRY:+/}${IMAGE_NAME:-nodepass/license-center}:${BUILD_VERSION:-0.3.0}
     container_name: license-center
     depends_on:
       postgres:

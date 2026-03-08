@@ -17,17 +17,16 @@ import (
 
 // SignatureConfig 签名配置
 type SignatureConfig struct {
-	Secret        string
-	TimeWindow    int64 // 时间窗口（秒）
-	NonceStore    NonceStore
-	SkipPaths     []string
-	HeaderPrefix  string
+	Secret       string
+	TimeWindow   int64 // 时间窗口（秒）
+	NonceStore   NonceStore
+	SkipPaths    []string
+	HeaderPrefix string
 }
 
 // NonceStore Nonce 存储接口
 type NonceStore interface {
-	Exists(nonce string) bool
-	Add(nonce string, ttl time.Duration) error
+	AddIfAbsent(nonce string, ttl time.Duration) (bool, error)
 }
 
 // MemoryNonceStore 内存 Nonce 存储
@@ -45,23 +44,17 @@ func NewMemoryNonceStore() *MemoryNonceStore {
 	return store
 }
 
-// Exists 检查 Nonce 是否存在
-func (s *MemoryNonceStore) Exists(nonce string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	expiry, exists := s.store[nonce]
-	if !exists {
-		return false
-	}
-	return time.Now().Before(expiry)
-}
-
-// Add 添加 Nonce
-func (s *MemoryNonceStore) Add(nonce string, ttl time.Duration) error {
+// AddIfAbsent 原子添加 Nonce（存在且未过期则返回 false）
+func (s *MemoryNonceStore) AddIfAbsent(nonce string, ttl time.Duration) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	now := time.Now()
+	if expiry, exists := s.store[nonce]; exists && now.Before(expiry) {
+		return false, nil
+	}
 	s.store[nonce] = time.Now().Add(ttl)
-	return nil
+	return true, nil
 }
 
 // cleanup 清理过期 Nonce
@@ -138,17 +131,6 @@ func SignatureMiddleware(config SignatureConfig) gin.HandlerFunc {
 			return
 		}
 
-		// 验证 Nonce（防重放）
-		if config.NonceStore.Exists(nonce) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success":   false,
-				"message":   "重复的请求",
-				"timestamp": time.Now().UTC(),
-			})
-			c.Abort()
-			return
-		}
-
 		// 读取请求体
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -174,8 +156,26 @@ func SignatureMiddleware(config SignatureConfig) gin.HandlerFunc {
 			return
 		}
 
-		// 存储 Nonce
-		_ = config.NonceStore.Add(nonce, time.Duration(config.TimeWindow)*time.Second)
+		// 原子存储 Nonce（防重放）
+		added, addErr := config.NonceStore.AddIfAbsent(nonce, time.Duration(config.TimeWindow)*time.Second)
+		if addErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success":   false,
+				"message":   "签名验证服务异常",
+				"timestamp": time.Now().UTC(),
+			})
+			c.Abort()
+			return
+		}
+		if !added {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success":   false,
+				"message":   "重复的请求",
+				"timestamp": time.Now().UTC(),
+			})
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}

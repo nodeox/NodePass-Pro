@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Card, Table, Tag, Input, Space } from 'antd'
+import { Card, Table, Tag } from 'antd'
 import { logApi } from '@/api'
 import type { VerifyLog } from '@/types'
 import dayjs from 'dayjs'

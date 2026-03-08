@@ -175,10 +175,21 @@ func main() {
 	{
 		api.POST("/auth/login", authHandler.Login)
 		if cfg.Security.Signature.Enabled {
+			var nonceStore middleware.NonceStore = middleware.NewMemoryNonceStore()
+			if redisCache != nil {
+				nonceStore = middleware.NewRedisNonceStore(
+					redisCache.GetClient(),
+					fmt.Sprintf("%ssignature:nonce:", cfg.Redis.Prefix),
+				)
+				log.Printf("签名防重放使用 Redis Nonce 存储")
+			} else {
+				log.Printf("签名防重放使用内存 Nonce 存储（单实例）")
+			}
 			apiSigned := api.Group("")
 			apiSigned.Use(middleware.SignatureMiddleware(middleware.SignatureConfig{
 				Secret:     cfg.Security.Signature.Secret,
 				TimeWindow: cfg.Security.Signature.TimeWindow,
+				NonceStore: nonceStore,
 			}))
 			apiSigned.POST("/license/verify", licenseHandler.Verify)
 			log.Printf("签名校验已启用")

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tantml:react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { Card, Table, Button, Space, Tag, Modal, Form, Input, message, Popconfirm } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { tagApi } from '@/api'

@@ -7,11 +7,9 @@ import {
   StopOutlined,
   LinkOutlined,
   WarningOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
 } from '@ant-design/icons'
 import { dashboardApi } from '@/api'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -30,12 +28,6 @@ export default function Dashboard() {
   })
 
   const statsData = stats?.data
-
-  // 计算增长率
-  const calculateGrowth = (current: number, previous: number) => {
-    if (previous === 0) return 0
-    return ((current - previous) / previous * 100).toFixed(1)
-  }
 
   const columns = [
     {

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================================
-# NodePass License Center 一键部署脚本 v0.2.0
+# NodePass License Center 一键部署脚本 v0.3.0
 # ============================================================================
 
 REPO_URL="${REPO_URL:-https://github.com/nodeox/NodePass-Pro.git}"
@@ -10,10 +10,20 @@ BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/nodepass-license-center}"
 PROJECT_SUBDIR="${PROJECT_SUBDIR:-license-center}"
 ACTION="install" # install / upgrade / uninstall
+BACKUP_DIR="${BACKUP_DIR:-${INSTALL_DIR%/}-backups}"
+LAST_CONFIG_BACKUP=""
+
+# 镜像相关配置
+USE_PREBUILT_IMAGE=false
+IMAGE_URL=""
+IMAGE_FILE=""
+IMAGE_NAME="nodepass/license-center"
+IMAGE_VERSION="0.3.0"
 
 SUDO_CMD=""
 PKG_MANAGER=""
 RUN_DEPLOY_AS_SUDO=false
+SKIP_HEALTH_CHECK=false
 
 # 颜色输出
 RED='\033[0;31m'
@@ -24,7 +34,7 @@ NC='\033[0m' # No Color
 
 usage() {
   cat <<'USAGE'
-NodePass License Center 一键部署脚本 v0.2.0
+NodePass License Center 一键部署脚本 v0.3.0
 
 用法:
   bash install.sh [--install|--upgrade|--uninstall] [选项]
@@ -39,6 +49,12 @@ NodePass License Center 一键部署脚本 v0.2.0
   --branch <branch>            分支（默认: main）
   --install-dir <dir>          安装目录（默认: /opt/nodepass-license-center）
   --project-subdir <name>      子目录（默认: license-center）
+  --skip-health-check          跳过健康检查
+  --use-image                  使用预构建镜像（不从源码构建）
+  --image-url <url>            镜像下载地址
+  --image-file <file>          本地镜像文件路径
+  --image-name <name>          镜像名称（默认: nodepass/license-center）
+  --image-version <ver>        镜像版本（默认: 0.3.0）
   -h, --help                   显示帮助
 
 示例:
@@ -54,11 +70,20 @@ NodePass License Center 一键部署脚本 v0.2.0
   # 自定义安装目录
   bash install.sh --install --install-dir /data/license-center
 
+  # 使用预构建镜像安装
+  bash install.sh --install --use-image
+
+  # 从 URL 下载镜像安装
+  bash install.sh --install --use-image --image-url https://example.com/license-center-0.3.0.tar.gz
+
+  # 从本地文件安装
+  bash install.sh --install --use-image --image-file /path/to/license-center-0.3.0.tar.gz
+
 远程一键安装:
   bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 
-版本: v0.2.0
-功能: 授权管理、域名绑定、监控告警、Webhook 通知
+版本: v0.3.0
+功能: 授权管理、域名绑定、监控告警、Webhook 通知、Web 管理界面
 USAGE
 }
 
@@ -242,6 +267,32 @@ parse_args() {
         PROJECT_SUBDIR="${2:-}"
         shift 2
         ;;
+      --skip-health-check)
+        SKIP_HEALTH_CHECK=true
+        shift
+        ;;
+      --use-image)
+        USE_PREBUILT_IMAGE=true
+        shift
+        ;;
+      --image-url)
+        IMAGE_URL="${2:-}"
+        USE_PREBUILT_IMAGE=true
+        shift 2
+        ;;
+      --image-file)
+        IMAGE_FILE="${2:-}"
+        USE_PREBUILT_IMAGE=true
+        shift 2
+        ;;
+      --image-name)
+        IMAGE_NAME="${2:-}"
+        shift 2
+        ;;
+      --image-version)
+        IMAGE_VERSION="${2:-}"
+        shift 2
+        ;;
       -h|--help)
         usage
         exit 0
@@ -261,6 +312,126 @@ prepare_install_dir() {
   run_root mkdir -p "$parent_dir"
 }
 
+download_image() {
+  local url="$1"
+  local output_file="$2"
+
+  log_info "下载镜像: $url"
+
+  if command -v wget >/dev/null 2>&1; then
+    wget -O "$output_file" "$url"
+  elif command -v curl >/dev/null 2>&1; then
+    curl -L -o "$output_file" "$url"
+  else
+    log_error "需要 wget 或 curl 来下载镜像"
+    exit 1
+  fi
+}
+
+load_image_from_file() {
+  local image_file="$1"
+
+  log_step "加载 Docker 镜像..."
+  log_info "镜像文件: $image_file"
+
+  # 验证文件存在
+  if [[ ! -f "$image_file" ]]; then
+    log_error "镜像文件不存在: $image_file"
+    exit 1
+  fi
+
+  # 验证校验和（如果存在）
+  if [[ -f "${image_file}.sha256" ]]; then
+    log_info "验证校验和..."
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum -c "${image_file}.sha256" || log_warn "校验和验证失败"
+    elif command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 -c "${image_file}.sha256" || log_warn "校验和验证失败"
+    fi
+  fi
+
+  # 加载镜像
+  if [[ "$image_file" == *.gz ]]; then
+    log_info "解压并加载镜像..."
+    gunzip -c "$image_file" | docker load
+  else
+    docker load -i "$image_file"
+  fi
+
+  log_info "✓ 镜像加载完成"
+}
+
+prepare_image() {
+  log_step "准备 Docker 镜像..."
+
+  if [[ -n "$IMAGE_FILE" ]]; then
+    # 使用本地镜像文件
+    load_image_from_file "$IMAGE_FILE"
+  elif [[ -n "$IMAGE_URL" ]]; then
+    # 从 URL 下载镜像
+    local temp_file="/tmp/license-center-${IMAGE_VERSION}.tar.gz"
+    download_image "$IMAGE_URL" "$temp_file"
+    load_image_from_file "$temp_file"
+    rm -f "$temp_file"
+  else
+    # 从 Docker Hub 拉取镜像
+    log_info "从 Docker Hub 拉取镜像: ${IMAGE_NAME}:${IMAGE_VERSION}"
+    docker pull "${IMAGE_NAME}:${IMAGE_VERSION}"
+  fi
+
+  log_info "✓ 镜像准备完成"
+}
+
+prepare_config_only() {
+  log_step "准备配置文件..."
+
+  prepare_install_dir
+
+  # 只下载必要的配置文件
+  local project_dir="${INSTALL_DIR}/${PROJECT_SUBDIR}"
+  run_root mkdir -p "$project_dir"
+  run_root mkdir -p "${project_dir}/configs"
+
+  # 下载 docker-compose.prod.yml
+  log_info "下载 docker-compose 配置..."
+  local compose_url="https://raw.githubusercontent.com/nodeox/NodePass-Pro/${BRANCH}/${PROJECT_SUBDIR}/docker-compose.prod.yml"
+  if command -v curl >/dev/null 2>&1; then
+    run_root curl -fsSL "$compose_url" -o "${project_dir}/docker-compose.yml"
+  else
+    run_root wget -q "$compose_url" -O "${project_dir}/docker-compose.yml"
+  fi
+
+  # 下载配置文件模板（升级时保留用户现有配置）
+  if [[ -f "${project_dir}/configs/config.yaml" ]]; then
+    log_info "检测到已有配置，跳过覆盖: ${project_dir}/configs/config.yaml"
+  else
+    log_info "下载配置文件模板..."
+    local config_url="https://raw.githubusercontent.com/nodeox/NodePass-Pro/${BRANCH}/${PROJECT_SUBDIR}/configs/config.yaml"
+    if command -v curl >/dev/null 2>&1; then
+      run_root curl -fsSL "$config_url" -o "${project_dir}/configs/config.yaml"
+    else
+      run_root wget -q "$config_url" -O "${project_dir}/configs/config.yaml"
+    fi
+  fi
+
+  # 创建 .env 文件
+  if [[ ! -f "${project_dir}/.env" ]]; then
+    log_info "创建环境变量文件..."
+    run_root tee "${project_dir}/.env" > /dev/null <<EOF
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=nodepass_license
+POSTGRES_PORT=5432
+APP_PORT=8090
+BUILD_VERSION=${IMAGE_VERSION}
+GIN_MODE=release
+IMAGE_NAME=${IMAGE_NAME}
+EOF
+  fi
+
+  log_info "✓ 配置准备完成"
+}
+
 prepare_repo() {
   log_step "准备代码仓库..."
 
@@ -271,6 +442,7 @@ prepare_repo() {
     run_root git -C "${INSTALL_DIR}" fetch origin "${BRANCH}"
     run_root git -C "${INSTALL_DIR}" checkout "${BRANCH}"
     run_root git -C "${INSTALL_DIR}" reset --hard "origin/${BRANCH}"
+    run_root git -C "${INSTALL_DIR}" clean -fd
   else
     log_info "克隆仓库到: ${INSTALL_DIR}"
     run_root rm -rf "${INSTALL_DIR}"
@@ -294,15 +466,57 @@ resolve_project_dir() {
   echo ""
 }
 
+get_app_port() {
+  local project_dir="$1"
+  local env_file="${project_dir}/.env"
+  local app_port="8090"
+
+  if [[ -f "$env_file" ]]; then
+    local value
+    value="$(grep -E '^APP_PORT=' "$env_file" | tail -n 1 | cut -d'=' -f2- | tr -d '[:space:]' || true)"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+      app_port="$value"
+    fi
+  fi
+
+  echo "$app_port"
+}
+
 backup_config() {
   local project_dir="$1"
   local config_file="${project_dir}/configs/config.yaml"
 
+  if [[ -z "$project_dir" ]]; then
+    log_warn "未检测到项目目录，跳过配置备份。"
+    return 0
+  fi
+
   if [[ -f "$config_file" ]]; then
-    local backup_file="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    run_root mkdir -p "$BACKUP_DIR"
+    local backup_file="${BACKUP_DIR}/config.yaml.backup.$(date +%Y%m%d_%H%M%S)"
     log_info "备份配置文件: $backup_file"
     run_root cp "$config_file" "$backup_file"
+    LAST_CONFIG_BACKUP="$backup_file"
+  else
+    log_warn "未找到配置文件，跳过备份: $config_file"
   fi
+}
+
+restore_config() {
+  local project_dir="$1"
+
+  if [[ -z "$project_dir" || -z "$LAST_CONFIG_BACKUP" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$LAST_CONFIG_BACKUP" ]]; then
+    log_warn "备份文件不存在，跳过配置恢复: $LAST_CONFIG_BACKUP"
+    return 0
+  fi
+
+  local target="${project_dir}/configs/config.yaml"
+  run_root mkdir -p "$(dirname "$target")"
+  run_root cp "$LAST_CONFIG_BACKUP" "$target"
+  log_info "已恢复用户配置: $target"
 }
 
 run_deploy() {
@@ -342,13 +556,22 @@ run_down() {
 }
 
 check_service_health() {
+  local project_dir="$1"
+
+  if [[ "$SKIP_HEALTH_CHECK" == true ]]; then
+    log_info "跳过健康检查"
+    return 0
+  fi
+
   log_step "检查服务健康状态..."
+  local app_port
+  app_port="$(get_app_port "$project_dir")"
 
   local max_attempts=30
   local attempt=0
 
   while [[ $attempt -lt $max_attempts ]]; do
-    if curl -sf http://127.0.0.1:8090/health >/dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${app_port}/health" >/dev/null 2>&1; then
       log_info "✓ 服务健康检查通过"
       return 0
     fi
@@ -357,11 +580,14 @@ check_service_health() {
     sleep 2
   done
 
-  log_warn "服务健康检查超时，请手动检查"
+  log_warn "服务健康检查超时，请手动检查日志"
+  log_info "查看日志命令: cd ${INSTALL_DIR}/${PROJECT_SUBDIR} && ./scripts/deploy.sh --logs"
   return 1
 }
 
 show_success_info() {
+  local app_port="$1"
+
   cat <<EOF
 
 ${GREEN}╔════════════════════════════════════════════════════════════════╗
@@ -371,9 +597,9 @@ ${GREEN}╔═══════════════════════
 ╚════════════════════════════════════════════════════════════════╝${NC}
 
 ${BLUE}📍 访问地址:${NC}
-  • 健康检查: http://127.0.0.1:8090/health
-  • 管理面板: http://127.0.0.1:8090/console
-  • API 文档: http://127.0.0.1:8090/api/v1
+  • 健康检查: http://127.0.0.1:${app_port}/health
+  • 管理面板: http://127.0.0.1:${app_port}/console
+  • API 文档: http://127.0.0.1:${app_port}/api/v1
 
 ${BLUE}🔐 管理员账号:${NC}
   • 首次初始化会使用配置文件中的 admin.username / admin.password
@@ -408,6 +634,8 @@ EOF
 }
 
 show_upgrade_info() {
+  local app_port="$1"
+
   cat <<EOF
 
 ${GREEN}╔════════════════════════════════════════════════════════════════╗
@@ -417,21 +645,27 @@ ${GREEN}╔═══════════════════════
 ╚══════════════════════════════��═════════════════════════════════╝${NC}
 
 ${BLUE}📍 访问地址:${NC}
-  • 管理面板: http://127.0.0.1:8090/console
+  • 管理面板: http://127.0.0.1:${app_port}/console
 
-${BLUE}🆕 v0.2.0 新功能:${NC}
-  • ✨ 域名绑定功能（防止授权码多站点共享）
-  • ✨ 完整的 Web 管理界面（React + TypeScript）
-  • ✨ 实时监控仪表盘
-  • ✨ 自动告警系统
-  • ✨ Webhook 事件通知
-  • ✨ 批量操作功能
-  • ✨ 标签管理系统
+${BLUE}🆕 v0.3.0 新功能:${NC}
+  • ✨ 优化的 Docker 多阶段构建（前后端一体化）
+  • ✨ 增强的部署脚本（支持更多操作）
+  • ✨ Makefile 快捷命令支持
+  • ✨ 完善的环境变量配置
+  • ✨ 改进的日志和监控
+  • ✨ 数据库备份恢复功能
 
 ${BLUE}⚠️  重要提示:${NC}
   • 配置文件已备份，请检查新配置项
   • 数据库已自动迁移
+  • 新增 .env 文件支持环境变量配置
   • 建议查看更新日志了解详细变更
+
+${BLUE}🔧 新增命令:${NC}
+  • make help     - 查看所有可用命令
+  • make status   - 查看服务状态
+  • make logs     - 查看实时日志
+  • make backup-db - 备份数据库
 
 EOF
 }
@@ -486,7 +720,7 @@ main() {
 ║  | |\  | (_) | (_| |  __/  __/ (_| \__ \__ \                  ║
 ║  |_| \_|\___/ \__,_|\___|_|   \__,_|___/___/                  ║
 ║                                                                ║
-║              License Center v0.2.0                             ║
+║              License Center v0.3.0                             ║
 ║                                                                ║
 ╚════════════════════════════════════════════════════════════════╝
 BANNER
@@ -502,14 +736,27 @@ BANNER
   check_system_requirements
   ensure_env
 
-  prepare_repo
+  if [[ "$ACTION" == "upgrade" ]]; then
+    local existing_project_dir
+    existing_project_dir="$(resolve_project_dir)"
+    backup_config "$existing_project_dir"
+  fi
+
+  if [[ "$USE_PREBUILT_IMAGE" == true ]]; then
+    log_info "使用预构建镜像模式"
+    prepare_image
+    prepare_config_only
+  else
+    log_info "使用源码构建模式"
+    prepare_repo
+  fi
 
   local project_dir
   project_dir="$(resolve_project_dir)"
 
   if [[ "$ACTION" == "upgrade" ]]; then
     log_info "执行升级部署..."
-    backup_config "$project_dir"
+    restore_config "$project_dir"
   else
     log_info "执行全新安装..."
   fi
@@ -518,12 +765,15 @@ BANNER
 
   # 等待服务启动
   sleep 5
-  check_service_health
+  check_service_health "$project_dir"
+
+  local app_port
+  app_port="$(get_app_port "$project_dir")"
 
   if [[ "$ACTION" == "upgrade" ]]; then
-    show_upgrade_info
+    show_upgrade_info "$app_port"
   else
-    show_success_info
+    show_success_info "$app_port"
   fi
 }
 

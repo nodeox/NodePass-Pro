@@ -31,7 +31,7 @@
   security:
     signature:
       enabled: false
-      secret: "change-this-signature-secret"
+      secret: "REPLACE_WITH_STRONG_SIGNATURE_SECRET"
       time_window: 300
   ```
 - **特性**:

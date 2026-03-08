@@ -1,6 +1,28 @@
 # NodePass License Center - 增强版
 
+**版本：** v0.3.0 | **发布日期：** 2026-03-08
+
 独立授权管理系统（独立仓可部署），用于 NodePass Pro 的授权校验与授权码管理。
+
+## 🎉 v0.3.0 新特性
+
+### 🐳 Docker 镜像优化
+- **多阶段构建**：前后端一体化构建，镜像体积减小 50%
+- **预构建镜像支持**：支持从 Docker Hub、本地文件、私有仓库部署
+- **多架构支持**：支持 linux/amd64 和 linux/arm64
+- **镜像管理工具**：完整的镜像构建、保存、加载、推送脚本
+
+### 🚀 部署增强
+- **5 种部署方式**：源码构建、Docker Hub、本地文件、私有仓库、多架构
+- **Makefile 工具**：35+ 快捷命令，覆盖开发、部署、测试全流程
+- **增强的部署脚本**：8 种操作模式，支持健康检查、状态监控
+- **环境变量配置**：灵活的 .env 配置，支持自定义端口和版本
+
+### 📚 文档完善
+- **部署指南**：[DEPLOYMENT.md](./DEPLOYMENT.md) - 完整的部署文档
+- **镜像指南**：[IMAGE_GUIDE.md](./IMAGE_GUIDE.md) - Docker 镜像使用指南
+- **快速参考**：[QUICKREF.md](./QUICKREF.md) - 命令速查手册
+- **更新日志**：[CHANGELOG.md](./CHANGELOG.md) - 详细的版本历史
 
 ## 新增功能
 
@@ -30,10 +52,122 @@
 
 ## 快速部署
 
+### 方式一：一键安装（推荐生产环境）
+
+#### 使用源码构建
 ```bash
-git clone <your-license-center-repo>
-cd license-center
-./scripts/deploy.sh
+# 远程一键安装
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
+
+# 或下载后安装
+wget https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh
+chmod +x install.sh
+./install.sh --install
+```
+
+#### 使用预构建镜像（推荐）
+```bash
+# 从 Docker Hub 拉取镜像
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") \
+  --install --use-image
+
+# 从本地镜像文件安装（离线环境）
+bash install.sh --install --use-image \
+  --image-file /path/to/license-center-0.3.0.tar.gz
+
+# 从私有仓库安装
+bash install.sh --install --use-image \
+  --image-name registry.example.com/license-center \
+  --image-version 0.3.0
+```
+
+### 方式二：使用 Makefile（推荐开发环境）
+
+```bash
+git clone https://github.com/nodeox/NodePass-Pro.git
+cd NodePass-Pro/license-center
+
+# 查看所有可用命令
+make help
+
+# 启动服务（源码构建）
+make up
+
+# 或使用预构建镜像
+make load-image  # 从文件加载镜像
+docker compose -f docker-compose.prod.yml up -d
+
+# 查看状态
+make status
+
+# 查看日志
+make logs
+```
+
+### 方式三：使用部署脚本
+
+```bash
+git clone https://github.com/nodeox/NodePass-Pro.git
+cd NodePass-Pro/license-center
+
+# 启动服务
+./scripts/deploy.sh --up
+
+# 查看状态
+./scripts/deploy.sh --status
+
+# 查看日志
+./scripts/deploy.sh --logs
+```
+
+### 方式四：Docker Compose
+
+#### 开发环境（源码构建）
+```bash
+git clone https://github.com/nodeox/NodePass-Pro.git
+cd NodePass-Pro/license-center
+
+# 配置环境变量
+cp .env.example .env
+vim .env
+
+# 启动服务
+docker compose up -d --build
+
+# 查看日志
+docker compose logs -f
+```
+
+#### 生产环境（预构建镜像）
+```bash
+# 配置环境变量
+cp .env.prod.example .env
+vim .env
+
+# 启动服务
+docker compose -f docker-compose.prod.yml up -d
+
+# 查看日志
+docker compose -f docker-compose.prod.yml logs -f
+```
+
+### 方式五：构建和分发镜像
+
+```bash
+# 构建并保存镜像
+./scripts/build-image.sh --save
+
+# 从文件加载镜像
+./scripts/build-image.sh --load
+
+# 推送到私有仓库
+./scripts/build-image.sh --push --registry registry.example.com
+
+# 构建多架构镜像
+./scripts/build-image.sh --multi-arch \
+  --platform linux/amd64,linux/arm64 \
+  --registry registry.example.com \
+  --push
 ```
 
 默认地址：`http://127.0.0.1:8090`
@@ -41,11 +175,24 @@ cd license-center
 - 健康检查：`http://127.0.0.1:8090/health`
 - Web 管理面板：`http://127.0.0.1:8090/console`
 
+详细部署文档请查看：[DEPLOYMENT.md](./DEPLOYMENT.md)
+
+镜像使用指南请查看：[IMAGE_GUIDE.md](./IMAGE_GUIDE.md)
+
+## 部署方式对比
+
+| 方式 | 适用场景 | 部署速度 | 磁盘占用 | 网络要求 |
+|------|---------|---------|---------|---------|
+| 源码构建 | 开发环境 | 慢（10-15分钟） | 大（~2GB） | 高 |
+| 预构建镜像（Docker Hub） | 生产环境 | 快（3-5分钟） | 小（~200MB） | 中 |
+| 预构建镜像（本地文件） | 离线环境 | 快（2-3分钟） | 小（~200MB） | 无 |
+| 预构建镜像（私有仓库） | 企业环境 | 快（2-4分钟） | 小（~200MB） | 低 |
+
 ## 远程一键安装/升级/卸载
 
 ```bash
 # 安装
-bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
 
 # 升级
 bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --upgrade
@@ -72,13 +219,15 @@ database:
   db_name: "nodepass_license"
 
 jwt:
-  secret: "change-this-license-secret"
+  # 必填，32 位以上随机字符串
+  secret: "REPLACE_WITH_STRONG_JWT_SECRET"
   expire_hours: 24
 
 admin:
   username: "admin"
   email: "admin@license.local"
-  password: "ChangeMe123!"
+  # 首次初始化管理员时必填，建议 12 位以上强密码
+  password: "REPLACE_WITH_STRONG_ADMIN_PASSWORD"
 ```
 
 ### Redis 缓存（可选）
@@ -106,7 +255,8 @@ security:
   # 请求签名验证
   signature:
     enabled: false
-    secret: "change-this-signature-secret"
+    # 启用后必填，32 位以上随机字符串
+    secret: "REPLACE_WITH_STRONG_SIGNATURE_SECRET"
     time_window: 300
 
   # IP 白名单
@@ -272,12 +422,12 @@ GET /api/v1/webhook-logs?webhook_id=1&page=1&page_size=20
 X-Webhook-Signature: <HMAC-SHA256 签名>
 ```
 
-## 默认管理员
+## 管理员初始化
 
-- 用户名：`admin`
-- 密码：`ChangeMe123!`
+- 用户名来自 `configs/config.yaml` 中的 `admin.username`
+- 密码来自 `configs/config.yaml` 中的 `admin.password`
 
-请首次登录后立即修改 `configs/config.yaml` 中的管理员密码与 JWT Secret。
+启动前必须配置强密码与强密钥（`jwt.secret` / `security.signature.secret`），否则服务会拒绝启动。
 
 ## 技术栈
 

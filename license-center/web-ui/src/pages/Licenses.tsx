@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   Card,
   Table,
@@ -21,7 +21,6 @@ import {
 import {
   PlusOutlined,
   ReloadOutlined,
-  EditOutlined,
   DeleteOutlined,
   StopOutlined,
   CheckOutlined,
@@ -43,7 +42,6 @@ export default function Licenses() {
 
   const [generateForm] = Form.useForm()
   const [transferForm] = Form.useForm()
-  const queryClient = useQueryClient()
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['licenses', page, pageSize, filters],
@@ -293,7 +291,12 @@ export default function Licenses() {
       <Table
         rowSelection={{
           selectedRowKeys,
-          onChange: setSelectedRowKeys,
+          onChange: (keys) =>
+            setSelectedRowKeys(
+              keys
+                .map((key) => Number(key))
+                .filter((id) => Number.isFinite(id)),
+            ),
         }}
         columns={columns}
         dataSource={data?.data?.items || []}

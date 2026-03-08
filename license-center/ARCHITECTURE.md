@@ -271,12 +271,12 @@ docker build -t license-center .
 docker-compose up -d
 ```
 
-## 📝 默认账号
+## 📝 管理员初始化
 
-- 用户名：`admin`
-- 密码：`ChangeMe123!`
+- 用户名：来自 `configs/config.yaml` 的 `admin.username`
+- 密码：来自 `configs/config.yaml` 的 `admin.password`
 
-**⚠️ 首次登录后请立即修改密码！**
+**⚠️ 启动前必须配置强密码与强密钥，默认弱值会被拒绝启动。**
 
 ## 🛠️ 技术栈
 
