@@ -69,6 +69,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
 bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) --upgrade --license-key NP-XXXX-XXXX
 ```
 
+> 发布说明（2026-03-08）  
+> 自此版本起，当 `BACKEND_LICENSE_ENABLED=true` 时，必须同时配置 `BACKEND_LICENSE_DOMAIN`（建议同时配置 `BACKEND_LICENSE_SITE_URL`）。若仅开启授权开关而未配置域名，后端会在运行时授权校验中拒绝通过，业务 API 将被拦截。
+
 卸载：
 
 ```bash
@@ -106,6 +109,14 @@ cd NodePass-Pro
 ./scripts/deploy.sh --license-key NP-XXXX-XXXX
 ```
 
+说明：
+- 未提供可用生产域名时，`scripts/deploy.sh` 会默认关闭后端运行时授权（避免误拦截业务 API）。
+- 如需启用运行时授权，请显式提供域名：
+
+```bash
+./scripts/deploy.sh --license-key NP-XXXX-XXXX --license-domain panel.example.com --license-site-url https://panel.example.com
+```
+
 2) 启用 Caddy 反向代理（自动 HTTPS）
 
 ```bash
@@ -137,6 +148,7 @@ cd NodePass-Pro
   - `nodeclient/VERSION`
 - 可使用 `./scripts/version.sh show` 查看版本，`./scripts/version.sh set ...` 更新版本；
 - 授权验证脚本：`scripts/license-verify.py`（会按版本策略校验 panel/backend/frontend/nodeclient）；
+- 运行时授权 E2E 联调脚本：`tests/license_runtime_e2e.sh`（真实 `license-center` + Docker backend 启动回归）；
 - `install.sh` 与 `scripts/deploy.sh` 在非 `--down` 模式下都会强制授权校验；
 - 后端运行时会持续校验授权，授权过期/失效后业务 API 会被拒绝（保留 `/health` 与 `/api/v1/license/status`）；
 - 启用 Caddy 时会自动生成配置文件：`deploy/caddy/Caddyfile`；

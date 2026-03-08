@@ -27,6 +27,8 @@ BACKEND_LICENSE_ENABLED="${BACKEND_LICENSE_ENABLED:-}"
 BACKEND_LICENSE_VERIFY_INTERVAL="${BACKEND_LICENSE_VERIFY_INTERVAL:-300}"
 BACKEND_LICENSE_FAIL_OPEN="${BACKEND_LICENSE_FAIL_OPEN:-false}"
 BACKEND_LICENSE_OFFLINE_GRACE_SECONDS="${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS:-600}"
+BACKEND_LICENSE_DOMAIN="${BACKEND_LICENSE_DOMAIN:-}"
+BACKEND_LICENSE_SITE_URL="${BACKEND_LICENSE_SITE_URL:-}"
 
 log_info() {
   echo "[INFO] $*"
@@ -109,6 +111,8 @@ NodePass Pro 一键部署脚本
   --license-key <授权码>          授权码（非 down 模式必填）
   --license-server <URL>          授权验证接口（默认: https://license.nodepass.pro/api/v1/license/verify）
   --machine-id <ID>               指定机器标识（可选，默认自动检测）
+  --license-domain <域名>         运行时授权域名（启用运行时授权时建议设置）
+  --license-site-url <URL>        运行时授权站点地址（可选）
   --down                          停止并移除当前部署
   -h, --help                      显示帮助
 
@@ -121,9 +125,12 @@ NodePass Pro 一键部署脚本
   FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
   LICENSE_KEY                     授权码（可替代 --license-key）
   LICENSE_VERIFY_URL              授权验证接口（可替代 --license-server）
+  BACKEND_LICENSE_DOMAIN          运行时授权域名（启用运行时授权时建议设置）
+  BACKEND_LICENSE_SITE_URL        运行时授权站点地址（可选）
 
 示例:
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX
+  ./scripts/deploy.sh --license-key NP-XXXX-XXXX --license-domain panel.example.com --license-site-url https://panel.example.com
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --email admin@example.com
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
   ./scripts/deploy.sh --skip-nodeclient-build
@@ -137,6 +144,56 @@ sanitize_domain() {
   input="${input#https://}"
   input="${input%%/*}"
   echo "$input"
+}
+
+is_local_domain() {
+  local host="${1,,}"
+  if [[ -z "$host" ]]; then
+    return 0
+  fi
+  if [[ "$host" == "localhost" || "$host" == "::1" || "$host" == "0.0.0.0" ]]; then
+    return 0
+  fi
+  if [[ "$host" == 127.* ]]; then
+    return 0
+  fi
+  if [[ "$host" == *.local || "$host" == *.test ]]; then
+    return 0
+  fi
+  return 1
+}
+
+is_usable_license_domain() {
+  local host
+  host="$(sanitize_domain "$1")"
+  if [[ -z "$host" || "$host" == \*.* ]]; then
+    return 1
+  fi
+  if is_local_domain "$host"; then
+    return 1
+  fi
+  return 0
+}
+
+resolve_license_runtime_settings() {
+  local frontend_domain="$1"
+  local backend_domain="$2"
+
+  if [[ -n "$BACKEND_LICENSE_DOMAIN" ]]; then
+    BACKEND_LICENSE_DOMAIN="$(sanitize_domain "$BACKEND_LICENSE_DOMAIN")"
+  elif [[ -n "$backend_domain" ]]; then
+    BACKEND_LICENSE_DOMAIN="$backend_domain"
+  elif [[ -n "$frontend_domain" ]]; then
+    BACKEND_LICENSE_DOMAIN="$frontend_domain"
+  fi
+
+  if [[ -n "$BACKEND_LICENSE_DOMAIN" && -z "$BACKEND_LICENSE_SITE_URL" ]]; then
+    local scheme="https"
+    if [[ "$WITH_CADDY" != true ]]; then
+      scheme="http"
+    fi
+    BACKEND_LICENSE_SITE_URL="${scheme}://${BACKEND_LICENSE_DOMAIN}"
+  fi
 }
 
 require_command() {
@@ -263,6 +320,14 @@ parse_args() {
         LICENSE_MACHINE_ID="${2:-}"
         shift 2
         ;;
+      --license-domain)
+        BACKEND_LICENSE_DOMAIN="${2:-}"
+        shift 2
+        ;;
+      --license-site-url)
+        BACKEND_LICENSE_SITE_URL="${2:-}"
+        shift 2
+        ;;
       -h|--help)
         usage
         exit 0
@@ -333,6 +398,8 @@ run_compose() {
     BACKEND_LICENSE_VERIFY_INTERVAL="${BACKEND_LICENSE_VERIFY_INTERVAL}" \
     BACKEND_LICENSE_FAIL_OPEN="${BACKEND_LICENSE_FAIL_OPEN}" \
     BACKEND_LICENSE_OFFLINE_GRACE_SECONDS="${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS}" \
+    BACKEND_LICENSE_DOMAIN="${BACKEND_LICENSE_DOMAIN}" \
+    BACKEND_LICENSE_SITE_URL="${BACKEND_LICENSE_SITE_URL}" \
     CADDY_HTTP_PORT="$CADDY_HTTP_PORT" \
     CADDY_HTTPS_PORT="$CADDY_HTTPS_PORT" \
     "$@"
@@ -395,8 +462,28 @@ main() {
   fi
 
   verify_license_or_exit
+  resolve_license_runtime_settings "$sanitized_frontend_domain" "$sanitized_backend_domain"
+
   if [[ -z "${BACKEND_LICENSE_ENABLED}" ]]; then
-    BACKEND_LICENSE_ENABLED="true"
+    if is_usable_license_domain "$BACKEND_LICENSE_DOMAIN"; then
+      BACKEND_LICENSE_ENABLED="true"
+      log_info "检测到可用域名 ${BACKEND_LICENSE_DOMAIN}，默认启用运行时授权。"
+    else
+      BACKEND_LICENSE_ENABLED="false"
+      log_warn "未检测到可用生产域名，默认关闭运行时授权（避免业务接口被误拦截）。"
+    fi
+  fi
+
+  if [[ "${BACKEND_LICENSE_ENABLED,,}" == "true" ]]; then
+    if ! is_usable_license_domain "$BACKEND_LICENSE_DOMAIN"; then
+      log_error "BACKEND_LICENSE_ENABLED=true，但未提供可用域名。请设置 --license-domain 或 BACKEND_LICENSE_DOMAIN。"
+      exit 1
+    fi
+    if [[ -z "$BACKEND_LICENSE_SITE_URL" ]]; then
+      BACKEND_LICENSE_SITE_URL="https://${BACKEND_LICENSE_DOMAIN}"
+    fi
+    log_info "运行时授权域名: ${BACKEND_LICENSE_DOMAIN}"
+    log_info "运行时授权站点: ${BACKEND_LICENSE_SITE_URL}"
   fi
 
   local up_args=("-d")
