@@ -1,7 +1,9 @@
 import {
+  Alert,
   Button,
   Card,
   Col,
+  Descriptions,
   Divider,
   Form,
   Input,
@@ -11,15 +13,18 @@ import {
   Select,
   Space,
   Switch,
+  Tag,
   Typography,
   message,
 } from 'antd'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { systemApi } from '../../services/api'
+import { licenseApi, systemApi } from '../../services/api'
+import type { LicenseStatus } from '../../types'
 import { getErrorMessage } from '../../utils/error'
+import { formatDateTime } from '../../utils/format'
 
 type SystemConfigFormValues = {
   site_name: string
@@ -40,6 +45,11 @@ type SystemConfigFormValues = {
   smtp_reply_to: string
   smtp_encryption: 'none' | 'starttls' | 'ssl'
   smtp_skip_verify: boolean
+}
+
+type LicenseDomainFormValues = {
+  domain: string
+  site_url: string
 }
 
 const parseBoolean = (value: string | undefined): boolean => {
@@ -69,10 +79,14 @@ const SystemConfig = () => {
   usePageTitle('系统配置')
 
   const [form] = Form.useForm<SystemConfigFormValues>()
+  const [licenseDomainForm] = Form.useForm<LicenseDomainFormValues>()
   const [loading, setLoading] = useState<boolean>(true)
   const [saving, setSaving] = useState<boolean>(false)
+  const [licenseLoading, setLicenseLoading] = useState<boolean>(true)
+  const [updatingLicenseDomain, setUpdatingLicenseDomain] = useState<boolean>(false)
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null)
 
-  const loadConfig = async (): Promise<void> => {
+  const loadConfig = useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
       const config = await systemApi.config()
@@ -104,11 +118,28 @@ const SystemConfig = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [form])
+
+  const loadLicenseStatus = useCallback(async (): Promise<void> => {
+    setLicenseLoading(true)
+    try {
+      const status = await licenseApi.status()
+      setLicenseStatus(status)
+      licenseDomainForm.setFieldsValue({
+        domain: status.domain ?? '',
+        site_url: status.site_url ?? '',
+      })
+    } catch (error) {
+      message.error(getErrorMessage(error, '授权状态加载失败'))
+      setLicenseStatus(null)
+    } finally {
+      setLicenseLoading(false)
+    }
+  }, [licenseDomainForm])
 
   useEffect(() => {
-    void loadConfig()
-  }, [])
+    void Promise.all([loadConfig(), loadLicenseStatus()])
+  }, [loadConfig, loadLicenseStatus])
 
   const handleSubmit = async (values: SystemConfigFormValues): Promise<void> => {
     setSaving(true)
@@ -151,8 +182,129 @@ const SystemConfig = () => {
     }
   }
 
+  const handleUpdateLicenseDomain = async (values: LicenseDomainFormValues): Promise<void> => {
+    if (!licenseStatus?.enabled) {
+      message.warning('运行时授权未开启，无需更换域名')
+      return
+    }
+
+    const domain = values.domain.trim()
+    const siteURL = values.site_url.trim()
+    if (!domain && !siteURL) {
+      message.warning('授权域名和站点地址至少填写一个')
+      return
+    }
+
+    setUpdatingLicenseDomain(true)
+    try {
+      const updatedStatus = await licenseApi.updateDomain({
+        domain,
+        site_url: siteURL,
+      })
+      setLicenseStatus(updatedStatus)
+      licenseDomainForm.setFieldsValue({
+        domain: updatedStatus.domain ?? domain,
+        site_url: updatedStatus.site_url ?? siteURL,
+      })
+      message.success('授权域名更新成功')
+      await loadLicenseStatus()
+    } catch (error) {
+      message.error(getErrorMessage(error, '授权域名更新失败'))
+    } finally {
+      setUpdatingLicenseDomain(false)
+    }
+  }
+
   return (
     <PageContainer title="系统配置" description="维护系统运行相关参数。">
+      <Card style={{ marginBottom: 16 }}>
+        <Typography.Title level={5} style={{ marginTop: 0 }}>
+          运行时授权
+        </Typography.Title>
+        {licenseLoading ? (
+          <Skeleton active paragraph={{ rows: 4 }} />
+        ) : (
+          <Space direction="vertical" size={16} className="w-full">
+            <Descriptions
+              bordered
+              size="small"
+              column={{ xs: 1, md: 2 }}
+            >
+              <Descriptions.Item label="授权状态">
+                {licenseStatus?.enabled ? (
+                  licenseStatus.valid ? (
+                    <Tag color="success">已授权</Tag>
+                  ) : (
+                    <Tag color="error">未授权</Tag>
+                  )
+                ) : (
+                  <Tag>未启用</Tag>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="授权码">
+                {licenseStatus?.license_key || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="授权日期">
+                {formatDateTime(licenseStatus?.authorized_at ?? licenseStatus?.last_success_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="授权到期">
+                {formatDateTime(licenseStatus?.expires_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label="授权域名">
+                {licenseStatus?.domain || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="站点地址">
+                {licenseStatus?.site_url || '-'}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Alert
+              type={licenseStatus?.valid ? 'success' : 'warning'}
+              showIcon
+              message={licenseStatus?.message || '授权状态未知'}
+            />
+
+            <Form<LicenseDomainFormValues>
+              form={licenseDomainForm}
+              layout="vertical"
+              onFinish={(values) => void handleUpdateLicenseDomain(values)}
+            >
+              <Row gutter={16}>
+                <Col xs={24} md={10}>
+                  <Form.Item label="更换授权域名" name="domain">
+                    <Input
+                      placeholder="panel.example.com"
+                      disabled={!licenseStatus?.enabled}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={10}>
+                  <Form.Item label="站点地址（可选）" name="site_url">
+                    <Input
+                      placeholder="https://panel.example.com"
+                      disabled={!licenseStatus?.enabled}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={4}>
+                  <Form.Item label=" ">
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={updatingLicenseDomain}
+                      disabled={!licenseStatus?.enabled}
+                      className="w-full"
+                    >
+                      更换域名
+                    </Button>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Form>
+          </Space>
+        )}
+      </Card>
+
       <Card>
         {loading ? (
           <Skeleton active paragraph={{ rows: 14 }} />

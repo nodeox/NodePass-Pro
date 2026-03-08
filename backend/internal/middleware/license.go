@@ -14,6 +14,7 @@ var licenseBypassPaths = []string{
 	"/health",
 	"/api/v1/ping",
 	"/api/v1/license/status",
+	"/api/v1/license/domain",
 }
 
 // LicenseGuard 在授权失效时拦截业务请求。

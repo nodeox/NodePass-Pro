@@ -154,3 +154,36 @@ func TestVerifyRejectsLocalDomainVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateDomainWhenLicenseDisabled(t *testing.T) {
+	manager := NewManager(&config.LicenseConfig{
+		Enabled:    false,
+		LicenseKey: "LIC-TEST",
+	}, &config.ServerConfig{})
+
+	status, err := manager.UpdateDomain("panel.example.com", "")
+	if err != nil {
+		t.Fatalf("expected update domain success, got err: %v", err)
+	}
+	if status.Domain != "panel.example.com" {
+		t.Fatalf("domain mismatch: got=%q want=%q", status.Domain, "panel.example.com")
+	}
+	if status.SiteURL != "https://panel.example.com" {
+		t.Fatalf("site_url mismatch: got=%q want=%q", status.SiteURL, "https://panel.example.com")
+	}
+}
+
+func TestUpdateDomainRejectsInvalidDomain(t *testing.T) {
+	manager := NewManager(&config.LicenseConfig{
+		Enabled:    false,
+		LicenseKey: "LIC-TEST",
+	}, &config.ServerConfig{})
+
+	_, err := manager.UpdateDomain("localhost:3000", "")
+	if err == nil {
+		t.Fatalf("expected invalid domain to be rejected")
+	}
+	if !strings.Contains(err.Error(), "domain 无效") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

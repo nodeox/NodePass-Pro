@@ -7,13 +7,21 @@ import { message } from 'antd'
 
 import {
   getStoredToken,
+  getStoredRefreshToken,
+  setAuthSession,
   setAuthToken,
   clearAuthStorage,
   migrateOldStorage,
 } from '../utils/secureStorage'
 
 // 重新导出供外部使用
-export { setAuthToken, clearAuthStorage, getStoredToken }
+export {
+  setAuthToken,
+  setAuthSession,
+  clearAuthStorage,
+  getStoredToken,
+  getStoredRefreshToken,
+}
 
 import type {
   AdminUserListQuery,
@@ -31,6 +39,7 @@ import type {
   CreateVipLevelPayload,
   LoginPayload,
   LoginResult,
+  LicenseStatus,
   PaginationQuery,
   PaginationResult,
   RegisterPayload,
@@ -44,6 +53,7 @@ import type {
   TrafficUsageQuery,
   TrafficUsageSummary,
   UpdateVipLevelPayload,
+  UpdateLicenseDomainPayload,
   User,
   VipMyLevelResult,
   VipLevelRecord,
@@ -74,7 +84,12 @@ const apiClient = axios.create({
 // parseAuthStorage, getStoredToken, setAuthToken, clearAuthStorage 已从 secureStorage 导入
 
 const isAuthPath = (url: string): boolean =>
-  ['/auth/login', '/auth/register', '/auth/refresh'].some((path) =>
+  [
+    '/auth/login/v2',
+    '/auth/register',
+    '/auth/refresh/v2',
+    '/auth/logout',
+  ].some((path) =>
     url.includes(path),
   )
 
@@ -163,12 +178,30 @@ export const unwrapData = <T>(response: AxiosResponse<ApiSuccessResponse<T>>): T
 const normalizeLoginResult = (payload: unknown): LoginResult => {
   const source = (payload ?? {}) as Record<string, unknown>
   const token = String(source.token ?? source.access_token ?? '').trim()
+  const refreshToken = String(
+    source.refreshToken ?? source.refresh_token ?? '',
+  ).trim()
+  const expiresInRaw = source.expiresIn ?? source.expires_in
+  const tokenTypeRaw = source.tokenType ?? source.token_type
+  const expiresIn = typeof expiresInRaw === 'number' && expiresInRaw > 0
+    ? expiresInRaw
+    : undefined
+  const tokenType = typeof tokenTypeRaw === 'string' && tokenTypeRaw.trim()
+    ? tokenTypeRaw.trim()
+    : undefined
   const user = source.user
   if (!token || !user || typeof user !== 'object') {
     throw new Error('登录响应缺少有效凭证，请稍后重试')
   }
   return {
     token,
+    access_token: token,
+    refreshToken: refreshToken || undefined,
+    refresh_token: refreshToken || undefined,
+    expiresIn,
+    expires_in: expiresIn,
+    tokenType,
+    token_type: tokenType,
     user: user as LoginResult['user'],
   }
 }
@@ -188,35 +221,32 @@ const flushQueue = (error: unknown, token: string | null): void => {
 }
 
 const requestRefreshToken = async (): Promise<string> => {
-  const token = getStoredToken()
-  if (!token) {
-    throw new Error('缺少登录凭证')
+  const refreshToken = getStoredRefreshToken()
+  if (!refreshToken) {
+    throw new Error('缺少刷新凭证')
   }
 
-  const csrf = await ensureCSRFToken()
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  }
-  if (csrf) {
-    headers['X-CSRF-Token'] = csrf
-  }
-
-  const response = await axios.post<ApiSuccessResponse<{ token: string }>>(
-    '/api/v1/auth/refresh',
-    {},
+  const response = await axios.post<ApiSuccessResponse<LoginResult>>(
+    '/api/v1/auth/refresh/v2',
+    { refresh_token: refreshToken },
     {
       withCredentials: true,
-      headers,
     },
   )
   syncCSRFToken(response.headers)
 
-  const nextToken = response.data.data?.token
+  const normalized = normalizeLoginResult(response.data.data)
+  const nextToken = normalized.token
   if (!nextToken) {
     throw new Error('刷新 Token 失败')
   }
 
-  setAuthToken(nextToken)
+  setAuthSession({
+    accessToken: nextToken,
+    refreshToken: normalized.refreshToken ?? refreshToken,
+    expiresIn: normalized.expiresIn,
+    user: normalized.user,
+  })
   return nextToken
 }
 
@@ -300,7 +330,7 @@ export const authApi = {
 
   login: (payload: LoginPayload) =>
     apiClient
-      .post<ApiSuccessResponse<LoginResult>>('/auth/login', payload)
+      .post<ApiSuccessResponse<LoginResult>>('/auth/login/v2', payload)
       .then(unwrapData)
       .then(normalizeLoginResult),
 
@@ -323,9 +353,18 @@ export const authApi = {
       .then(unwrapData),
 
   refresh: () =>
-    apiClient
-      .post<ApiSuccessResponse<{ token: string }>>('/auth/refresh')
-      .then(unwrapData),
+    (() => {
+      const refreshToken = getStoredRefreshToken()
+      if (!refreshToken) {
+        return Promise.reject(new Error('缺少刷新凭证'))
+      }
+      return apiClient
+        .post<ApiSuccessResponse<LoginResult>>('/auth/refresh/v2', {
+          refresh_token: refreshToken,
+        })
+        .then(unwrapData)
+        .then(normalizeLoginResult)
+    })(),
 
   revokeAllTokens: () =>
     apiClient
@@ -460,6 +499,18 @@ export const systemApi = {
   stats: () =>
     apiClient
       .get<ApiSuccessResponse<Record<string, number>>>('/system/stats')
+      .then(unwrapData),
+}
+
+export const licenseApi = {
+  status: () =>
+    apiClient
+      .get<ApiSuccessResponse<LicenseStatus>>('/license/status')
+      .then(unwrapData),
+
+  updateDomain: (payload: UpdateLicenseDomainPayload) =>
+    apiClient
+      .put<ApiSuccessResponse<LicenseStatus>>('/license/domain', payload)
       .then(unwrapData),
 }
 

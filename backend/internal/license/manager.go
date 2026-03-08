@@ -21,14 +21,30 @@ import (
 
 const defaultVerifyInterval = 300 * time.Second
 
+const (
+	licenseVerifyScheme = "https://"
+	licenseVerifyHost1  = "key."
+	licenseVerifyHost2  = "hahaha."
+	licenseVerifyHost3  = "ooo"
+	licenseVerifyPath   = "/api/v1/license/verify"
+)
+
+func fixedLicenseVerifyURL() string {
+	return licenseVerifyScheme + licenseVerifyHost1 + licenseVerifyHost2 + licenseVerifyHost3 + licenseVerifyPath
+}
+
 // Status 运行时授权状态。
 type Status struct {
 	Enabled       bool       `json:"enabled"`
 	Valid         bool       `json:"valid"`
 	Message       string     `json:"message"`
+	LicenseKey    string     `json:"license_key,omitempty"`
 	LicenseID     uint       `json:"license_id,omitempty"`
 	Plan          string     `json:"plan,omitempty"`
 	Customer      string     `json:"customer,omitempty"`
+	Domain        string     `json:"domain,omitempty"`
+	SiteURL       string     `json:"site_url,omitempty"`
+	AuthorizedAt  *time.Time `json:"authorized_at,omitempty"`
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
@@ -101,6 +117,14 @@ func NewManager(cfg *config.LicenseConfig, serverCfg *config.ServerConfig) *Mana
 	}
 	manager.status.Enabled = cfg.Enabled
 	manager.status.MachineID = manager.machineID
+	manager.status.LicenseKey = strings.TrimSpace(cfg.LicenseKey)
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "nodepass-backend"
+	}
+	domain, siteURL := manager.resolveDomainAndSiteURL(hostname)
+	manager.status.Domain = domain
+	manager.status.SiteURL = siteURL
 	if cfg.Enabled {
 		manager.status.Valid = false
 		manager.status.Message = "license check pending"
@@ -172,9 +196,14 @@ func (m *Manager) Status() Status {
 
 func (m *Manager) verify(action string) error {
 	now := time.Now().UTC()
-	if strings.TrimSpace(m.cfg.VerifyURL) == "" || strings.TrimSpace(m.cfg.LicenseKey) == "" {
-		m.setFailure(now, "license verify_url/license_key 未配置", nil)
-		return fmt.Errorf("license verify_url/license_key 未配置")
+	m.mu.RLock()
+	cfg := m.cfg
+	machineID := m.machineID
+	m.mu.RUnlock()
+
+	if strings.TrimSpace(cfg.LicenseKey) == "" {
+		m.setFailure(now, "license license_key 未配置", nil)
+		return fmt.Errorf("license license_key 未配置")
 	}
 
 	hostname, _ := os.Hostname()
@@ -182,6 +211,12 @@ func (m *Manager) verify(action string) error {
 		hostname = "nodepass-backend"
 	}
 	domain, siteURL := m.resolveDomainAndSiteURL(hostname)
+	m.mu.Lock()
+	m.status.LicenseKey = strings.TrimSpace(cfg.LicenseKey)
+	m.status.Domain = domain
+	m.status.SiteURL = siteURL
+	m.mu.Unlock()
+
 	if !isUsableLicenseDomain(domain) {
 		msg := "license.domain/site_url 未配置或无效，请设置可公开访问的生产域名"
 		m.setFailure(now, msg, nil)
@@ -189,8 +224,8 @@ func (m *Manager) verify(action string) error {
 	}
 
 	reqPayload := verifyRequest{
-		LicenseKey:  strings.TrimSpace(m.cfg.LicenseKey),
-		MachineID:   m.machineID,
+		LicenseKey:  strings.TrimSpace(cfg.LicenseKey),
+		MachineID:   machineID,
 		MachineName: hostname,
 		Action:      action,
 		Branch:      strings.TrimSpace(os.Getenv("APP_GIT_BRANCH")),
@@ -208,7 +243,7 @@ func (m *Manager) verify(action string) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSpace(m.cfg.VerifyURL), bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, fixedLicenseVerifyURL(), bytes.NewReader(body))
 	if err != nil {
 		m.setFailure(now, "构建授权请求失败", nil)
 		return err
@@ -218,14 +253,14 @@ func (m *Manager) verify(action string) error {
 	resp, err := m.client.Do(req)
 	if err != nil {
 		m.handleVerifyRequestError(now, err)
-		return err
+		return fmt.Errorf("授权中心连接失败")
 	}
 	defer resp.Body.Close()
 
 	var parsed verifyResponse
 	if decodeErr := json.NewDecoder(resp.Body).Decode(&parsed); decodeErr != nil {
 		m.handleVerifyRequestError(now, decodeErr)
-		return decodeErr
+		return fmt.Errorf("授权响应解析失败")
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -259,6 +294,7 @@ func (m *Manager) verify(action string) error {
 	m.status.ExpiresAt = parsed.Data.ExpiresAt
 	m.status.LastCheckedAt = &now
 	m.status.LastSuccessAt = &now
+	m.status.AuthorizedAt = &now
 	m.mu.Unlock()
 
 	return nil
@@ -266,28 +302,33 @@ func (m *Manager) verify(action string) error {
 
 func (m *Manager) handleVerifyRequestError(now time.Time, requestErr error) {
 	m.mu.RLock()
+	failOpen := m.cfg.FailOpen
+	graceSeconds := m.cfg.OfflineGraceSeconds
+	m.mu.RUnlock()
+
+	m.mu.RLock()
 	lastSuccess := m.status.LastSuccessAt
 	m.mu.RUnlock()
 
-	if m.cfg.FailOpen && lastSuccess != nil {
-		msg := fmt.Sprintf("授权中心不可达，fail_open 生效: %v", requestErr)
+	if failOpen && lastSuccess != nil {
+		msg := "授权中心不可达，fail_open 生效"
 		m.setPass(now, msg, lastSuccess)
 		return
 	}
 
-	graceSeconds := m.cfg.OfflineGraceSeconds
 	if graceSeconds < 0 {
 		graceSeconds = 0
 	}
 	if graceSeconds > 0 && lastSuccess != nil {
 		if now.Sub(*lastSuccess) <= time.Duration(graceSeconds)*time.Second {
-			msg := fmt.Sprintf("授权中心不可达，处于离线宽限期: %v", requestErr)
+			msg := "授权中心不可达，处于离线宽限期"
 			m.setPass(now, msg, lastSuccess)
 			return
 		}
 	}
 
-	m.setFailure(now, fmt.Sprintf("授权校验失败: %v", requestErr), nil)
+	_ = requestErr // 避免将底层网络错误原样暴露到状态消息
+	m.setFailure(now, "授权校验失败", nil)
 }
 
 func (m *Manager) setPass(now time.Time, message string, lastSuccess *time.Time) {
@@ -299,6 +340,7 @@ func (m *Manager) setPass(now time.Time, message string, lastSuccess *time.Time)
 	m.status.LastCheckedAt = &now
 	if lastSuccess != nil {
 		m.status.LastSuccessAt = lastSuccess
+		m.status.AuthorizedAt = lastSuccess
 	}
 }
 
@@ -340,15 +382,64 @@ func detectMachineID(configured string) string {
 	return "unknown-machine"
 }
 
+// UpdateDomain 更新授权域名并在授权开启时触发重新校验。
+func (m *Manager) UpdateDomain(domain string, siteURL string) (Status, error) {
+	if m == nil {
+		return Status{
+			Enabled: false,
+			Valid:   true,
+			Message: "license manager not initialized",
+		}, fmt.Errorf("license manager not initialized")
+	}
+
+	normalizedDomain := extractHost(domain)
+	normalizedSiteURL := strings.TrimSpace(siteURL)
+	if normalizedDomain == "" {
+		normalizedDomain = extractHost(normalizedSiteURL)
+	}
+
+	if normalizedDomain == "" && normalizedSiteURL == "" {
+		return m.Status(), fmt.Errorf("domain 与 site_url 至少提供一个")
+	}
+	if normalizedDomain != "" && !isUsableLicenseDomain(normalizedDomain) {
+		return m.Status(), fmt.Errorf("domain 无效，请使用可公开访问的生产域名")
+	}
+	if normalizedSiteURL == "" && normalizedDomain != "" {
+		normalizedSiteURL = fmt.Sprintf("https://%s", normalizedDomain)
+	}
+
+	m.mu.Lock()
+	m.cfg.Domain = normalizedDomain
+	m.cfg.SiteURL = normalizedSiteURL
+	m.status.Domain = normalizedDomain
+	m.status.SiteURL = normalizedSiteURL
+	m.mu.Unlock()
+
+	if !m.Enabled() {
+		return m.Status(), nil
+	}
+
+	if err := m.verify("domain_change"); err != nil {
+		return m.Status(), err
+	}
+	return m.Status(), nil
+}
+
 func (m *Manager) resolveDomainAndSiteURL(hostname string) (string, string) {
-	domain := extractHost(m.cfg.Domain)
-	siteURL := strings.TrimSpace(m.cfg.SiteURL)
+	m.mu.RLock()
+	rawDomain := m.cfg.Domain
+	rawSiteURL := m.cfg.SiteURL
+	origins := append([]string(nil), m.serverOrigins...)
+	m.mu.RUnlock()
+
+	domain := extractHost(rawDomain)
+	siteURL := strings.TrimSpace(rawSiteURL)
 
 	if domain == "" {
 		domain = extractHost(siteURL)
 	}
 	if domain == "" {
-		for _, origin := range m.serverOrigins {
+		for _, origin := range origins {
 			host := extractHost(origin)
 			if !isUsableLicenseDomain(host) {
 				continue

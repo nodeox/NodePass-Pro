@@ -53,6 +53,28 @@ export interface ApiErrorResponse {
   timestamp: string
 }
 
+export interface LicenseStatus {
+  enabled: boolean
+  valid: boolean
+  message: string
+  license_key?: string
+  license_id?: number
+  plan?: string
+  customer?: string
+  domain?: string
+  site_url?: string
+  authorized_at?: string | null
+  expires_at?: string | null
+  last_checked_at?: string | null
+  last_success_at?: string | null
+  machine_id?: string
+}
+
+export interface UpdateLicenseDomainPayload {
+  domain?: string
+  site_url?: string
+}
+
 export interface LoginPayload {
   account: string
   password: string
@@ -98,6 +120,13 @@ export interface TelegramSSOLoginResult extends LoginResult {
 
 export interface LoginResult {
   token: string
+  refreshToken?: string
+  expiresIn?: number
+  tokenType?: string
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  token_type?: string
   user: User
 }
 
@@ -337,13 +366,19 @@ export interface AdminUserRecord {
   email: string
   role: UserRole
   vip_level: number
+  vip_expires_at?: string | null
   status: string
   traffic_used: number
   traffic_quota: number
+  max_rules?: number
+  max_bandwidth?: number
+  max_self_hosted_entry_nodes?: number
+  max_self_hosted_exit_nodes?: number
   telegram_id?: string | null
   telegram_username?: string | null
   created_at?: string
   updated_at?: string
+  last_login_at?: string | null
 }
 
 export interface AdminUserListQuery extends PaginationQuery {
@@ -353,7 +388,7 @@ export interface AdminUserListQuery extends PaginationQuery {
   keyword?: string
 }
 
-export interface AdminUserListResult extends PaginationResult<AdminUserRecord> {}
+export type AdminUserListResult = PaginationResult<AdminUserRecord>
 
 export type WebSocketEventType =
   | 'node_status_changed'
@@ -496,7 +531,7 @@ export interface AuditLog {
 
 export interface WsMessage {
   type: string
-  data: any
+  data: Record<string, unknown> | null
   timestamp: string
 }
 

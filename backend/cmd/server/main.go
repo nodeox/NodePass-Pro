@@ -181,17 +181,8 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	api.GET("/ping", func(c *gin.Context) {
 		utils.Success(c, gin.H{"message": "pong", "version": version.Version})
 	})
-	api.GET("/license/status", func(c *gin.Context) {
-		if licenseManager == nil {
-			utils.Success(c, gin.H{
-				"enabled": false,
-				"valid":   true,
-				"message": "license manager not initialized",
-			})
-			return
-		}
-		utils.Success(c, licenseManager.Status())
-	})
+	licenseHandler := handlers.NewLicenseRuntimeHandler(licenseManager)
+	api.GET("/license/status", licenseHandler.GetStatus)
 
 	nodeGroupHandler := handlers.NewNodeGroupHandler(database.DB)
 	nodeInstanceHandler := handlers.NewNodeInstanceHandler(database.DB)
@@ -224,7 +215,8 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	}
 
 	api.POST("/auth/register", authHandler.Register)
-	api.POST("/auth/login", middleware.RateLimit(0.2, 5), authHandler.Login)
+	api.POST("/auth/login", middleware.RateLimit(0.2, 5), authHandler.LoginDeprecated)
+	api.POST("/auth/refresh", middleware.RateLimit(1, 10), authHandler.RefreshDeprecated)
 
 	// V2 认证接口 - 支持 refresh token
 	api.POST("/auth/login/v2", middleware.RateLimit(0.2, 5), authHandler.LoginV2)
@@ -253,7 +245,6 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		auth := authGroup.Group("/auth")
 		{
 			auth.GET("/me", authHandler.Me)
-			auth.POST("/refresh", authHandler.Refresh)
 			auth.PUT("/password", authHandler.ChangePassword)
 			auth.POST("/email/code", authHandler.SendEmailChangeCode)
 			auth.PUT("/email", authHandler.ChangeEmail)
@@ -338,6 +329,11 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	adminGroup.Use(middleware.RequireRole("admin"))
 	adminGroup.Use(middleware.RateLimit(10, 20)) // 管理端点限流：10 QPS，20 突发
 	{
+		adminLicense := adminGroup.Group("/license")
+		{
+			adminLicense.PUT("/domain", licenseHandler.UpdateDomain)
+		}
+
 		system := adminGroup.Group("/system")
 		{
 			system.GET("/config", systemHandler.GetConfig)
