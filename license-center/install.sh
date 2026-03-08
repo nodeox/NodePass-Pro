@@ -12,6 +12,7 @@ PROJECT_SUBDIR="${PROJECT_SUBDIR:-license-center}"
 ACTION="install" # install / upgrade / uninstall
 BACKUP_DIR="${BACKUP_DIR:-${INSTALL_DIR%/}-backups}"
 LAST_CONFIG_BACKUP=""
+GENERATED_CONFIG_WARNING=false
 
 # 镜像相关配置
 USE_PREBUILT_IMAGE=true
@@ -130,6 +131,125 @@ detect_pkg_manager() {
     PKG_MANAGER="zypper"
   else
     PKG_MANAGER=""
+  fi
+}
+
+generate_random_hex() {
+  local bytes="${1:-32}"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$bytes"
+    return
+  fi
+
+  if command -v xxd >/dev/null 2>&1; then
+    head -c "$bytes" /dev/urandom | xxd -p -c 256
+    return
+  fi
+
+  # 最后兜底：仅在极简系统中使用
+  head -c "$bytes" /dev/urandom | od -An -tx1 | tr -d ' \n'
+}
+
+extract_yaml_value() {
+  local file="$1"
+  local section="$2"
+  local key="$3"
+
+  awk -v section="$section" -v key="$key" '
+    $0 ~ "^[[:space:]]*" section ":[[:space:]]*$" { in_section=1; next }
+    in_section && $0 ~ "^[^[:space:]]" { in_section=0 }
+    in_section && $0 ~ "^[[:space:]]*" key ":[[:space:]]*" {
+      value=$0
+      sub("^[[:space:]]*" key ":[[:space:]]*", "", value)
+      gsub(/^[\"\047]|[\"\047]$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      print value
+      exit
+    }
+  ' "$file"
+}
+
+update_yaml_value() {
+  local file="$1"
+  local section="$2"
+  local key="$3"
+  local value="$4"
+  local tmp_file
+
+  tmp_file="$(mktemp)"
+  awk -v section="$section" -v key="$key" -v value="$value" '
+    BEGIN {
+      in_section=0
+      section_seen=0
+      updated=0
+    }
+    {
+      if ($0 ~ "^[[:space:]]*" section ":[[:space:]]*$") {
+        section_seen=1
+        in_section=1
+        print $0
+        next
+      }
+
+      if (in_section && $0 ~ "^[^[:space:]]") {
+        if (!updated) {
+          print "  " key ": \"" value "\""
+          updated=1
+        }
+        in_section=0
+      }
+
+      if (in_section && $0 ~ "^[[:space:]]*" key ":[[:space:]]*") {
+        print "  " key ": \"" value "\""
+        updated=1
+        next
+      }
+
+      print $0
+    }
+    END {
+      if (in_section && !updated) {
+        print "  " key ": \"" value "\""
+        updated=1
+      }
+      if (!updated) {
+        if (!section_seen) {
+          print section ":"
+        }
+        print "  " key ": \"" value "\""
+      }
+    }
+  ' "$file" > "$tmp_file"
+
+  run_root mv "$tmp_file" "$file"
+}
+
+ensure_secure_config() {
+  local config_file="$1"
+
+  if [[ ! -f "$config_file" ]]; then
+    log_error "配置文件不存在: $config_file"
+    exit 1
+  fi
+
+  local jwt_secret
+  jwt_secret="$(extract_yaml_value "$config_file" "jwt" "secret" || true)"
+  if [[ -z "$jwt_secret" || "$jwt_secret" == "change-this-license-secret" ]]; then
+    local generated_jwt
+    generated_jwt="$(generate_random_hex 32)"
+    update_yaml_value "$config_file" "jwt" "secret" "$generated_jwt"
+    GENERATED_CONFIG_WARNING=true
+    log_warn "检测到 jwt.secret 未配置或弱默认值，已自动生成强随机密钥。"
+  fi
+
+  local admin_password
+  admin_password="$(extract_yaml_value "$config_file" "admin" "password" || true)"
+  if [[ -z "$admin_password" || "$admin_password" == "ChangeMe123!" || ${#admin_password} -lt 12 ]]; then
+    local generated_admin_password
+    generated_admin_password="Np!$(generate_random_hex 10)Aa1"
+    update_yaml_value "$config_file" "admin" "password" "$generated_admin_password"
+    GENERATED_CONFIG_WARNING=true
+    log_warn "检测到 admin.password 缺失或强度不足，已自动生成强密码。"
   fi
 }
 
@@ -650,6 +770,16 @@ ${BLUE}💡 提示:${NC}
   • 建议启用 HTTPS 和防火墙
 
 EOF
+
+  if [[ "$GENERATED_CONFIG_WARNING" == true ]]; then
+    cat <<EOF
+${YELLOW}⚠️ 安全提示:${NC}
+  • 安装过程已自动生成 jwt.secret / admin.password（因检测到空值或弱值）
+  • 请立即检查并妥善保存配置文件中的密钥与管理员密码
+  • 配置文件路径: ${INSTALL_DIR}/${PROJECT_SUBDIR}/configs/config.yaml
+
+EOF
+  fi
 }
 
 show_upgrade_info() {
@@ -687,6 +817,15 @@ ${BLUE}🔧 新增命令:${NC}
   • make backup-db - 备份数据库
 
 EOF
+
+  if [[ "$GENERATED_CONFIG_WARNING" == true ]]; then
+    cat <<EOF
+${YELLOW}⚠️ 升级提示:${NC}
+  • 检测到弱配置已自动修复（jwt.secret / admin.password）
+  • 请检查并确认配置文件: ${INSTALL_DIR}/${PROJECT_SUBDIR}/configs/config.yaml
+
+EOF
+  fi
 }
 
 show_uninstall_info() {
@@ -779,6 +918,8 @@ BANNER
   else
     log_info "执行全新安装..."
   fi
+
+  ensure_secure_config "${project_dir}/configs/config.yaml"
 
   run_deploy "$project_dir"
 
