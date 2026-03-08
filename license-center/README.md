@@ -201,6 +201,24 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/li
 bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --uninstall
 ```
 
+## GitHub 镜像同步（GHCR）
+
+仓库已内置自动发布工作流：
+
+- 工作流文件：`.github/workflows/license-center-image.yml`
+- 触发条件：
+  - push 到 `main` 且涉及 `license-center/**`
+  - push `v*` 标签
+  - 手动触发 `workflow_dispatch`
+- 发布地址：`ghcr.io/nodeox/license-center`
+
+拉取示例：
+
+```bash
+docker pull ghcr.io/nodeox/license-center:latest
+docker pull ghcr.io/nodeox/license-center:v0.3.0
+```
+
 ## 配置说明
 
 ### 基础配置

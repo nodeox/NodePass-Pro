@@ -426,6 +426,14 @@ docker manifest inspect nodepass/license-center:0.3.0
 - **GitHub：** `ghcr.io/nodeox/license-center`
 - **私有仓库：** 根据配置
 
+### 自动同步到 GHCR
+
+仓库工作流 `.github/workflows/license-center-image.yml` 会在以下场景自动构建并推送镜像到 GHCR：
+
+- push 到 `main`（且变更包含 `license-center/**`）
+- push `v*` 标签
+- 手动触发工作流
+
 ## 十、技术支持
 
 - **文档：** [README.md](./README.md)
