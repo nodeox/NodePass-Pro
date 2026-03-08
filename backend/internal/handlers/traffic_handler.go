@@ -162,6 +162,41 @@ func (h *TrafficHandler) ResetQuota(c *gin.Context) {
 	utils.SuccessResponse(c, nil, "流量配额重置成功")
 }
 
+// UpdateQuota PUT /api/v1/traffic/quota/:id (admin only)
+func (h *TrafficHandler) UpdateQuota(c *gin.Context) {
+	adminUserID, role, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+	if !isAdminRole(role) {
+		utils.Error(c, http.StatusForbidden, "FORBIDDEN", "仅管理员可执行此操作")
+		return
+	}
+
+	targetUserID, ok := parseUintParam(c, "id")
+	if !ok {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "目标用户 ID 无效")
+		return
+	}
+
+	type requestPayload struct {
+		TrafficQuota int64 `json:"traffic_quota" binding:"required,min=0"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+
+	if err := h.trafficService.UpdateQuota(adminUserID, targetUserID, req.TrafficQuota); err != nil {
+		writeServiceError(c, err, "UPDATE_QUOTA_FAILED")
+		return
+	}
+
+	utils.SuccessResponse(c, nil, "流量配额更新成功")
+}
+
 func parseTimeQuery(raw string) (*time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

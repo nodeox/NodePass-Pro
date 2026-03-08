@@ -345,6 +345,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		adminTraffic := adminGroup.Group("/traffic")
 		{
 			adminTraffic.POST("/quota/reset", trafficHandler.ResetQuota)
+			adminTraffic.PUT("/quota/:id", trafficHandler.UpdateQuota)
 		}
 
 		adminVIP := adminGroup.Group("/vip")
@@ -356,6 +357,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		adminUsers := adminGroup.Group("/users")
 		{
 			adminUsers.GET("", userAdminHandler.ListUsers)
+			adminUsers.GET("/:id", userAdminHandler.GetUser)
 			adminUsers.PUT("/:id/role", userAdminHandler.UpdateRole)
 			adminUsers.PUT("/:id/status", userAdminHandler.UpdateStatus)
 			adminUsers.POST("/:id/vip/upgrade", vipHandler.UpgradeUser)

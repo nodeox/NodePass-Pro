@@ -282,6 +282,37 @@ type TunnelConfig struct {
 	ForwardTargets      []ForwardTarget     `json:"forward_targets"`
 	HealthCheckInterval int                 `json:"health_check_interval"` // 秒
 	HealthCheckTimeout  int                 `json:"health_check_timeout"`  // 秒
+	ProtocolConfig      *ProtocolConfig     `json:"protocol_config,omitempty"`
+}
+
+// ProtocolConfig 协议特定配置。
+type ProtocolConfig struct {
+	// TCP 配置
+	TCPKeepalive      *bool `json:"tcp_keepalive,omitempty"`
+	KeepaliveInterval *int  `json:"keepalive_interval,omitempty"` // 秒
+	ConnectTimeout    *int  `json:"connect_timeout,omitempty"`    // 秒
+	ReadTimeout       *int  `json:"read_timeout,omitempty"`       // 秒
+
+	// UDP 配置
+	BufferSize     *int `json:"buffer_size,omitempty"`     // 字节
+	SessionTimeout *int `json:"session_timeout,omitempty"` // 秒
+
+	// WebSocket 配置
+	WSPath         *string `json:"ws_path,omitempty"`
+	PingInterval   *int    `json:"ping_interval,omitempty"`    // 秒
+	MaxMessageSize *int    `json:"max_message_size,omitempty"` // KB
+	Compression    *bool   `json:"compression,omitempty"`
+
+	// TLS 配置
+	TLSVersion *string `json:"tls_version,omitempty"` // tls1.0, tls1.1, tls1.2, tls1.3
+	VerifyCert *bool   `json:"verify_cert,omitempty"`
+	SNI        *string `json:"sni,omitempty"`
+
+	// QUIC 配置
+	MaxStreams    *int  `json:"max_streams,omitempty"`
+	InitialWindow *int  `json:"initial_window,omitempty"` // KB
+	IdleTimeout   *int  `json:"idle_timeout,omitempty"`   // 秒
+	Enable0RTT    *bool `json:"enable_0rtt,omitempty"`
 }
 
 // ForwardTarget 转发目标。

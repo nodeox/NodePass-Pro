@@ -198,6 +198,7 @@ const TunnelList = () => {
         ip_type: values.ip_type,
         enable_proxy_protocol: values.enable_proxy_protocol,
         forward_targets: values.forward_targets || [],
+        protocol_config: (values as any).protocol_config || undefined,
       }
 
       if (entryRequiresExitGroup && !values.exit_group_id) {
@@ -309,7 +310,8 @@ const TunnelList = () => {
       ip_type: tunnel.config?.ip_type || 'auto',
       enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
       forward_targets: tunnel.config?.forward_targets || [],
-    })
+      protocol_config: tunnel.config?.protocol_config || undefined,
+    } as any)
     setOpen(true)
   }
 
@@ -329,7 +331,8 @@ const TunnelList = () => {
       ip_type: tunnel.config?.ip_type || 'auto',
       enable_proxy_protocol: tunnel.config?.enable_proxy_protocol || false,
       forward_targets: tunnel.config?.forward_targets || [],
-    })
+      protocol_config: tunnel.config?.protocol_config || undefined,
+    } as any)
     setOpen(true)
   }
 

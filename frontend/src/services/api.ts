@@ -354,6 +354,13 @@ export const trafficApi = {
         target_user_id: targetUserID,
       })
       .then(unwrapData),
+
+  updateQuota: (targetUserID: number, trafficQuota: number) =>
+    apiClient
+      .put<ApiSuccessResponse<null>>(`/traffic/quota/${targetUserID}`, {
+        traffic_quota: trafficQuota,
+      })
+      .then(unwrapData),
 }
 
 export const vipApi = {
@@ -385,6 +392,11 @@ export const userAdminApi = {
   list: (params?: AdminUserListQuery) =>
     apiClient
       .get<ApiSuccessResponse<AdminUserListResult>>('/users', { params })
+      .then(unwrapData),
+
+  getUser: (userID: number) =>
+    apiClient
+      .get<ApiSuccessResponse<User>>(`/users/${userID}`)
       .then(unwrapData),
 
   updateRole: (userID: number, role: 'admin' | 'user') =>

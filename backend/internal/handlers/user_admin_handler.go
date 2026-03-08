@@ -74,6 +74,33 @@ func (h *UserAdminHandler) ListUsers(c *gin.Context) {
 	utils.Success(c, result)
 }
 
+// GetUser GET /api/v1/users/:id (admin)
+func (h *UserAdminHandler) GetUser(c *gin.Context) {
+	adminUserID, role, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+	if !isAdminRole(role) {
+		utils.Error(c, http.StatusForbidden, "FORBIDDEN", "仅管理员可执行此操作")
+		return
+	}
+
+	targetUserID, ok := parseUintParam(c, "id")
+	if !ok {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "目标用户 ID 无效")
+		return
+	}
+
+	user, err := h.userAdminService.GetUser(adminUserID, targetUserID)
+	if err != nil {
+		writeServiceError(c, err, "GET_USER_FAILED")
+		return
+	}
+
+	utils.Success(c, user)
+}
+
 // UpdateRole PUT /api/v1/users/:id/role (admin)
 func (h *UserAdminHandler) UpdateRole(c *gin.Context) {
 	adminUserID, role, ok := getUserContext(c)

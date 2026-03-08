@@ -94,6 +94,18 @@ func (s *UserAdminService) ListUsers(adminUserID uint, filters UserListFilters) 
 	}, nil
 }
 
+// GetUser 获取单个用户详情。
+func (s *UserAdminService) GetUser(adminUserID uint, targetUserID uint) (*models.User, error) {
+	if _, err := ensureAdminUser(s.db, adminUserID); err != nil {
+		return nil, err
+	}
+	if targetUserID == 0 {
+		return nil, fmt.Errorf("%w: 目标用户 ID 无效", ErrInvalidParams)
+	}
+
+	return s.getUserByID(targetUserID)
+}
+
 // UpdateUserRole 更新用户角色。
 func (s *UserAdminService) UpdateUserRole(adminUserID uint, targetUserID uint, role string) (*models.User, error) {
 	if _, err := ensureAdminUser(s.db, adminUserID); err != nil {

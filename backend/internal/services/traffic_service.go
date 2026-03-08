@@ -269,6 +269,36 @@ func (s *TrafficService) ResetQuota(adminUserID uint, targetUserID uint) error {
 	return nil
 }
 
+// UpdateQuota 管理员更新用户流量配额。
+func (s *TrafficService) UpdateQuota(adminUserID uint, targetUserID uint, trafficQuota int64) error {
+	if adminUserID == 0 || targetUserID == 0 {
+		return fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+	if trafficQuota < 0 {
+		return fmt.Errorf("%w: 流量配额不能为负数", ErrInvalidParams)
+	}
+
+	admin, err := s.getUserByID(adminUserID)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(admin.Role), "admin") {
+		return fmt.Errorf("%w: 仅管理员可更新配额", ErrForbidden)
+	}
+
+	if _, err = s.getUserByID(targetUserID); err != nil {
+		return err
+	}
+
+	if err = s.db.Model(&models.User{}).
+		Where("id = ?", targetUserID).
+		Update("traffic_quota", trafficQuota).Error; err != nil {
+		return fmt.Errorf("更新用户流量配额失败: %w", err)
+	}
+
+	return nil
+}
+
 // MonthlyReset 每月重置配额并恢复超限用户规则。
 func (s *TrafficService) MonthlyReset() error {
 	tx := s.db.Begin()

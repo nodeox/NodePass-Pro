@@ -109,6 +109,36 @@ export interface ForwardTarget {
   weight: number
 }
 
+// 协议配置
+export interface ProtocolConfig {
+  // TCP 配置
+  tcp_keepalive?: boolean
+  keepalive_interval?: number // 秒
+  connect_timeout?: number // 秒
+  read_timeout?: number // 秒
+
+  // UDP 配置
+  buffer_size?: number // 字节
+  session_timeout?: number // 秒
+
+  // WebSocket 配置
+  ws_path?: string
+  ping_interval?: number // 秒
+  max_message_size?: number // KB
+  compression?: boolean
+
+  // TLS 配置
+  tls_version?: string // tls1.0, tls1.1, tls1.2, tls1.3
+  verify_cert?: boolean
+  sni?: string
+
+  // QUIC 配置
+  max_streams?: number
+  initial_window?: number // KB
+  idle_timeout?: number // 秒
+  enable_0rtt?: boolean
+}
+
 // 隧道配置
 export interface TunnelConfig {
   load_balance_strategy: LoadBalanceStrategy
@@ -117,6 +147,7 @@ export interface TunnelConfig {
   forward_targets: ForwardTarget[]
   health_check_interval?: number
   health_check_timeout?: number
+  protocol_config?: ProtocolConfig
 }
 
 // 隧道

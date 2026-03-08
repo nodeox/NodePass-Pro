@@ -21,6 +21,7 @@ import Announcements from './pages/system/Announcements'
 import AuditLogs from './pages/system/AuditLogs'
 import SystemConfig from './pages/system/SystemConfig'
 import UserManage from './pages/system/UserManage'
+import UserDetail from './pages/system/UserDetail'
 import TunnelDetail from './pages/tunnels/TunnelDetail'
 import TunnelList from './pages/tunnels/TunnelList'
 import TrafficStats from './pages/traffic/TrafficStats'
@@ -248,6 +249,10 @@ const router = createBrowserRouter([
               {
                 path: 'system/users',
                 element: <UserManage />,
+              },
+              {
+                path: 'system/users/:id',
+                element: <UserDetail />,
               },
               {
                 path: 'profile',
