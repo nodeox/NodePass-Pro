@@ -399,6 +399,7 @@ prepare_config_only() {
   local project_dir="${INSTALL_DIR}/${PROJECT_SUBDIR}"
   run_root mkdir -p "$project_dir"
   run_root mkdir -p "${project_dir}/configs"
+  run_root mkdir -p "${project_dir}/scripts"
 
   # 下载 docker-compose.prod.yml
   log_info "下载 docker-compose 配置..."
@@ -421,6 +422,16 @@ prepare_config_only() {
       run_root wget -q "$config_url" -O "${project_dir}/configs/config.yaml"
     fi
   fi
+
+  # 下载部署脚本（镜像模式仍需通过 deploy.sh 统一执行 up/down/logs）
+  log_info "下载部署脚本..."
+  local deploy_url="https://raw.githubusercontent.com/nodeox/NodePass-Pro/${BRANCH}/${PROJECT_SUBDIR}/scripts/deploy.sh"
+  if command -v curl >/dev/null 2>&1; then
+    run_root curl -fsSL "$deploy_url" -o "${project_dir}/scripts/deploy.sh"
+  else
+    run_root wget -q "$deploy_url" -O "${project_dir}/scripts/deploy.sh"
+  fi
+  run_root chmod +x "${project_dir}/scripts/deploy.sh"
 
   # 创建 .env 文件
   if [[ ! -f "${project_dir}/.env" ]]; then
