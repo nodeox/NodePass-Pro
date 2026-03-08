@@ -11,6 +11,8 @@
 {
   "license_key": "NP-XXXX-XXXX",
   "machine_id": "7f4b8d...",
+  "domain": "panel.example.com",
+  "site_url": "https://panel.example.com",
   "action": "install",
   "versions": {
     "panel": "0.1.0",
@@ -54,3 +56,9 @@
 - `data.valid=false` 时，安装脚本会立即终止；
 - 即使接口返回通过，脚本仍会基于 `version_policy` 进行本地二次版本校验；
 - 通过校验后，安装目录会写入 `.nodepass-license` 快照文件。
+
+## 升级注意（2026-03-08）
+
+- 当后端开启运行时授权校验（`BACKEND_LICENSE_ENABLED=true`）时，后端会强制要求可用域名信息；
+- 部署时需保证 `BACKEND_LICENSE_DOMAIN` 与 `BACKEND_LICENSE_SITE_URL` 至少配置一个，建议同时配置两者；
+- 若未配置域名，`/api/v1/license/status` 将显示授权未通过，业务 API 会返回 `403 LICENSE_INVALID`。

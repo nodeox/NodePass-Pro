@@ -18,7 +18,12 @@ E2E_LICENSE_PORT="${E2E_LICENSE_PORT:-18090}"
 E2E_DOMAIN="${E2E_DOMAIN:-panel.e2e.example.com}"
 E2E_LICENSE_IMAGE="${E2E_LICENSE_IMAGE:-nodepass/license-center:e2e-local}"
 E2E_LICENSE_IMAGE_SOURCE="${E2E_LICENSE_IMAGE_SOURCE:-local}" # local / pull
+E2E_BACKEND_VERSION="${E2E_BACKEND_VERSION:-$(tr -d '[:space:]' < "${ROOT_DIR}/backend/VERSION" 2>/dev/null || true)}"
 KEEP_STACK="${KEEP_STACK:-false}"
+
+if [[ -z "${E2E_BACKEND_VERSION}" ]]; then
+  E2E_BACKEND_VERSION="0.1.0"
+fi
 
 LICENSE_ADMIN_USERNAME="${LICENSE_ADMIN_USERNAME:-admin}"
 LICENSE_ADMIN_EMAIL="${LICENSE_ADMIN_EMAIL:-admin@e2e.local}"
@@ -319,6 +324,7 @@ step_start_backend_with_valid_domain() {
   log_step "启动 backend（启用运行时授权，带有效 domain）..."
 
   JWT_SECRET="${E2E_BACKEND_JWT_SECRET}" \
+  BACKEND_VERSION="${E2E_BACKEND_VERSION}" \
   BACKEND_LICENSE_ENABLED=true \
   LICENSE_VERIFY_URL="http://license-center-e2e:8090/api/v1/license/verify" \
   LICENSE_KEY="${LICENSE_KEY}" \
@@ -326,7 +332,7 @@ step_start_backend_with_valid_domain() {
   BACKEND_LICENSE_SITE_URL="https://${E2E_DOMAIN}" \
   E2E_BACKEND_PORT="${E2E_BACKEND_PORT}" \
   E2E_LICENSE_PORT="${E2E_LICENSE_PORT}" \
-  compose up -d postgres redis backend >/dev/null
+  compose up -d --build postgres redis backend >/dev/null
 
   wait_http_ok "http://127.0.0.1:${E2E_BACKEND_PORT}/health" 120 2
 }
@@ -360,6 +366,7 @@ step_restart_backend_without_domain() {
   log_step "重建 backend（故意不传 domain/site_url）验证阻断..."
 
   JWT_SECRET="${E2E_BACKEND_JWT_SECRET}" \
+  BACKEND_VERSION="${E2E_BACKEND_VERSION}" \
   BACKEND_LICENSE_ENABLED=true \
   LICENSE_VERIFY_URL="http://license-center-e2e:8090/api/v1/license/verify" \
   LICENSE_KEY="${LICENSE_KEY}" \

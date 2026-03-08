@@ -45,6 +45,8 @@ license:
   verify_url: "https://license.nodepass.pro/api/v1/license/verify"
   license_key: ""
   machine_id: ""
+  domain: ""
+  site_url: ""
   verify_interval: 300
   fail_open: false
   offline_grace_seconds: 600

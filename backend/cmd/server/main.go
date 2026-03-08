@@ -51,7 +51,7 @@ func main() {
 
 	gin.SetMode(cfg.Server.Mode)
 
-	licenseManager := license.NewManager(&cfg.License)
+	licenseManager := license.NewManager(&cfg.License, &cfg.Server)
 	licenseCtx, stopLicenseCheck := context.WithCancel(context.Background())
 	defer stopLicenseCheck()
 	licenseManager.Start(licenseCtx)

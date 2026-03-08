@@ -67,6 +67,10 @@ license:
   verify_url: "https://license.nodepass.pro/api/v1/license/verify"
   license_key: ""
   machine_id: ""
+  # 必填（license.enabled=true 时）：面板访问域名（如 panel.example.com）
+  domain: ""
+  # 可选：面板完整地址（如 https://panel.example.com）
+  site_url: ""
   verify_interval: 300
   fail_open: false
   offline_grace_seconds: 600

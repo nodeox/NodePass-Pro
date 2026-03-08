@@ -68,6 +68,8 @@ type LicenseConfig struct {
 	VerifyURL             string `mapstructure:"verify_url"`
 	LicenseKey            string `mapstructure:"license_key"`
 	MachineID             string `mapstructure:"machine_id"`
+	Domain                string `mapstructure:"domain"`
+	SiteURL               string `mapstructure:"site_url"`
 	VerifyIntervalSeconds int    `mapstructure:"verify_interval"`
 	FailOpen              bool   `mapstructure:"fail_open"`
 	OfflineGraceSeconds   int    `mapstructure:"offline_grace_seconds"`
