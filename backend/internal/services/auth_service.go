@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"nodepass-pro/backend/internal/models"
 	"nodepass-pro/backend/internal/utils"
 
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -18,6 +21,7 @@ type AuthService struct {
 	db                  *gorm.DB
 	vipService          *VIPService
 	refreshTokenService *RefreshTokenService
+	emailService        *EmailService
 }
 
 // RegisterRequest 注册请求。
@@ -42,12 +46,28 @@ type LoginResult struct {
 	User         *models.User `json:"user"`
 }
 
+type EmailChangeCodeResult struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	DebugCode string    `json:"debug_code,omitempty"`
+	Sent      bool      `json:"sent"`
+}
+
+type emailChangeCodePayload struct {
+	UserID    uint   `json:"user_id"`
+	NewEmail  string `json:"new_email"`
+	Code      string `json:"code"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+const emailChangeCodeTTL = 10 * time.Minute
+
 // NewAuthService 创建认证服务。
 func NewAuthService(db *gorm.DB) *AuthService {
 	return &AuthService{
 		db:                  db,
 		vipService:          NewVIPService(db),
 		refreshTokenService: NewRefreshTokenService(db),
+		emailService:        NewEmailService(db),
 	}
 }
 
@@ -160,8 +180,8 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResult, error) {
 	user.LastLoginAt = &now
 
 	return &LoginResult{
-		AccessToken: token,
-		RefreshToken: "", // 旧接口不返回 refresh token
+		AccessToken:  token,
+		RefreshToken: "",   // 旧接口不返回 refresh token
 		ExpiresIn:    3600, // 1 小时
 		TokenType:    "Bearer",
 		User:         &user,
@@ -247,6 +267,177 @@ func (s *AuthService) ChangePassword(userID uint, oldPassword string, newPasswor
 	return nil
 }
 
+// SendEmailChangeCode 发送邮箱修改验证码。
+func (s *AuthService) SendEmailChangeCode(userID uint, password string, newEmail string) (*EmailChangeCodeResult, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+
+	password = strings.TrimSpace(password)
+	newEmail = strings.ToLower(strings.TrimSpace(newEmail))
+	if password == "" || newEmail == "" {
+		return nil, fmt.Errorf("%w: password/new_email 不能为空", ErrInvalidParams)
+	}
+	if err := utils.ValidateEmail(newEmail); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidParams, err)
+	}
+
+	user, err := s.GetMe(userID)
+	if err != nil {
+		return nil, err
+	}
+	if compareErr := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); compareErr != nil {
+		return nil, fmt.Errorf("%w: 当前密码错误", ErrUnauthorized)
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Email), newEmail) {
+		return nil, fmt.Errorf("%w: 新邮箱不能与当前邮箱相同", ErrInvalidParams)
+	}
+	if err := s.ensureEmailAvailable(newEmail, userID); err != nil {
+		return nil, err
+	}
+
+	code, err := generateNumericCode(6)
+	if err != nil {
+		return nil, fmt.Errorf("生成邮箱验证码失败: %w", err)
+	}
+	expiresAt := time.Now().Add(emailChangeCodeTTL)
+	payload := emailChangeCodePayload{
+		UserID:    userID,
+		NewEmail:  newEmail,
+		Code:      code,
+		ExpiresAt: expiresAt.Unix(),
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	key := fmt.Sprintf("auth_email_change_code:%d", userID)
+	value := string(payloadBytes)
+	description := "修改邮箱验证码"
+
+	var systemConfig models.SystemConfig
+	queryErr := s.db.Where("key = ?", key).First(&systemConfig).Error
+	if queryErr == nil {
+		if err := s.db.Model(&models.SystemConfig{}).Where("id = ?", systemConfig.ID).Updates(map[string]interface{}{
+			"value":       value,
+			"description": description,
+		}).Error; err != nil {
+			return nil, fmt.Errorf("保存邮箱验证码失败: %w", err)
+		}
+	} else if errors.Is(queryErr, gorm.ErrRecordNotFound) {
+		systemConfig = models.SystemConfig{
+			Key:         key,
+			Value:       &value,
+			Description: &description,
+		}
+		if err := s.db.Create(&systemConfig).Error; err != nil {
+			return nil, fmt.Errorf("保存邮箱验证码失败: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("保存邮箱验证码失败: %w", queryErr)
+	}
+
+	sent := false
+	if s.emailService != nil {
+		sendErr := s.emailService.SendEmailChangeCode(newEmail, code, expiresAt)
+		if sendErr != nil {
+			if !errors.Is(sendErr, ErrSMTPNotEnabled) {
+				return nil, fmt.Errorf("发送邮箱验证码失败: %w", sendErr)
+			}
+			zap.L().Info("SMTP 未启用，返回调试验证码", zap.Uint("user_id", userID))
+		} else {
+			sent = true
+		}
+	}
+
+	debugCode := ""
+	if !sent {
+		debugCode = code
+	}
+	return &EmailChangeCodeResult{
+		ExpiresAt: expiresAt,
+		DebugCode: debugCode,
+		Sent:      sent,
+	}, nil
+}
+
+// ChangeEmail 使用验证码修改邮箱。
+func (s *AuthService) ChangeEmail(userID uint, newEmail string, code string) error {
+	if userID == 0 {
+		return fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+
+	newEmail = strings.ToLower(strings.TrimSpace(newEmail))
+	code = strings.TrimSpace(code)
+	if newEmail == "" || code == "" {
+		return fmt.Errorf("%w: new_email/code 不能为空", ErrInvalidParams)
+	}
+	if err := utils.ValidateEmail(newEmail); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidParams, err)
+	}
+
+	user, err := s.GetMe(userID)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Email), newEmail) {
+		return fmt.Errorf("%w: 新邮箱不能与当前邮箱相同", ErrInvalidParams)
+	}
+
+	key := fmt.Sprintf("auth_email_change_code:%d", userID)
+	var systemConfig models.SystemConfig
+	if err := s.db.Where("key = ?", key).First(&systemConfig).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: 请先发送邮箱验证码", ErrNotFound)
+		}
+		return fmt.Errorf("查询邮箱验证码失败: %w", err)
+	}
+	if systemConfig.Value == nil || strings.TrimSpace(*systemConfig.Value) == "" {
+		return fmt.Errorf("%w: 验证码无效", ErrInvalidParams)
+	}
+
+	var payload emailChangeCodePayload
+	if err := json.Unmarshal([]byte(*systemConfig.Value), &payload); err != nil {
+		return fmt.Errorf("%w: 验证码数据格式错误", ErrInvalidParams)
+	}
+
+	if payload.UserID != userID {
+		return fmt.Errorf("%w: 验证码不属于当前用户", ErrForbidden)
+	}
+	if !strings.EqualFold(strings.TrimSpace(payload.NewEmail), newEmail) {
+		return fmt.Errorf("%w: 验证码与新邮箱不匹配", ErrUnauthorized)
+	}
+	if payload.Code != code {
+		return fmt.Errorf("%w: 验证码错误", ErrUnauthorized)
+	}
+	if time.Now().Unix() > payload.ExpiresAt {
+		_ = s.db.Where("id = ?", systemConfig.ID).Delete(&models.SystemConfig{}).Error
+		return fmt.Errorf("%w: 验证码已过期", ErrUnauthorized)
+	}
+	if err := s.ensureEmailAvailable(newEmail, userID); err != nil {
+		return err
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.User{}).
+			Where("id = ?", userID).
+			Update("email", newEmail).Error; err != nil {
+			if isDuplicateKeyError(err) {
+				return fmt.Errorf("%w: 邮箱已被使用", ErrConflict)
+			}
+			return fmt.Errorf("更新邮箱失败: %w", err)
+		}
+		if err := tx.Where("id = ?", systemConfig.ID).Delete(&models.SystemConfig{}).Error; err != nil {
+			return fmt.Errorf("清理邮箱验证码失败: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := s.refreshTokenService.RevokeUserRefreshTokens(userID); err != nil {
+		return fmt.Errorf("撤销历史登录会话失败: %w", err)
+	}
+	return nil
+}
+
 func (s *AuthService) ensureUniqueUser(username string, email string) error {
 	var count int64
 	if err := s.db.Model(&models.User{}).
@@ -258,4 +449,35 @@ func (s *AuthService) ensureUniqueUser(username string, email string) error {
 		return fmt.Errorf("%w: 用户名或邮箱已存在", ErrConflict)
 	}
 	return nil
+}
+
+func (s *AuthService) ensureEmailAvailable(email string, excludeUserID uint) error {
+	var count int64
+	query := s.db.Model(&models.User{}).Where("email = ?", email)
+	if excludeUserID > 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	if err := query.Count(&count).Error; err != nil {
+		return fmt.Errorf("校验邮箱失败: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("%w: 邮箱已被使用", ErrConflict)
+	}
+	return nil
+}
+
+func generateNumericCode(length int) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("验证码长度必须大于 0")
+	}
+	const digits = "0123456789"
+	buf := make([]byte, length)
+	random := make([]byte, length)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	for i := range random {
+		buf[i] = digits[int(random[i])%len(digits)]
+	}
+	return string(buf), nil
 }

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -38,26 +40,69 @@ func (h *SystemHandler) GetConfig(c *gin.Context) {
 
 // UpdateConfig PUT /api/v1/system/config
 func (h *SystemHandler) UpdateConfig(c *gin.Context) {
-	type requestPayload struct {
-		Key   string `json:"key" binding:"required"`
+	type requestEntry struct {
+		Key   string `json:"key"`
 		Value string `json:"value"`
 	}
-	var req requestPayload
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+	type batchPayload struct {
+		Items []requestEntry `json:"items"`
+	}
+
+	rawBody, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数读取失败")
+		return
+	}
+	if len(rawBody) == 0 {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求体不能为空")
 		return
 	}
 
-	key := strings.TrimSpace(req.Key)
-	if err := h.systemService.UpdateConfig(key, req.Value); err != nil {
+	entries := make([]services.SystemConfigEntry, 0)
+	var batchReq batchPayload
+	if unmarshalErr := json.Unmarshal(rawBody, &batchReq); unmarshalErr == nil && len(batchReq.Items) > 0 {
+		for _, item := range batchReq.Items {
+			entries = append(entries, services.SystemConfigEntry{
+				Key:   item.Key,
+				Value: item.Value,
+			})
+		}
+	} else {
+		var listReq []requestEntry
+		if unmarshalErr := json.Unmarshal(rawBody, &listReq); unmarshalErr == nil && len(listReq) > 0 {
+			for _, item := range listReq {
+				entries = append(entries, services.SystemConfigEntry{
+					Key:   item.Key,
+					Value: item.Value,
+				})
+			}
+		} else {
+			var singleReq requestEntry
+			if unmarshalErr := json.Unmarshal(rawBody, &singleReq); unmarshalErr != nil {
+				utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+unmarshalErr.Error())
+				return
+			}
+			entries = append(entries, services.SystemConfigEntry{
+				Key:   singleReq.Key,
+				Value: singleReq.Value,
+			})
+		}
+	}
+
+	if err := h.systemService.UpdateConfigs(entries); err != nil {
 		writeServiceError(c, err, "UPDATE_SYSTEM_CONFIG_FAILED")
 		return
 	}
 
 	if h.hub != nil {
-		_ = h.hub.Broadcast(panelws.MessageTypeConfigUpdated, gin.H{
-			"key": key,
-		})
+		changedKeys := make([]string, 0, len(entries))
+		for _, item := range entries {
+			key := strings.TrimSpace(item.Key)
+			if key != "" {
+				changedKeys = append(changedKeys, key)
+			}
+		}
+		_ = h.hub.Broadcast(panelws.MessageTypeConfigUpdated, gin.H{"keys": changedKeys})
 	}
 
 	utils.SuccessResponse(c, nil, "系统配置更新成功")

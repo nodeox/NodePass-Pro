@@ -24,6 +24,8 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { nodeGroupApi, nodeInstanceApi, tunnelApi } from '../../services/nodeGroupApi'
 import type { NodeGroup, NodeGroupRelation, NodeInstance, Tunnel } from '../../types/nodeGroup'
 import { getErrorMessage } from '../../utils/error'
+import HealthCheck from './components/HealthCheck'
+import MonitoringDashboard from './components/MonitoringDashboard'
 
 const formatBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -548,6 +550,44 @@ const NodeGroupDetail = () => {
 
     return [
       {
+        key: 'overview',
+        label: '概览',
+        children: (
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic title="总节点数" value={summary.totalNodes} />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic title="在线节点数" value={summary.onlineNodes} />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic title="总上行流量" value={formatBytes(summary.trafficIn)} />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={6}>
+              <Card>
+                <Statistic title="总下行流量" value={formatBytes(summary.trafficOut)} />
+              </Card>
+            </Col>
+          </Row>
+        ),
+      },
+      {
+        key: 'health',
+        label: '健康检查',
+        children: group ? <HealthCheck group={group} /> : null,
+      },
+      {
+        key: 'monitoring',
+        label: '实时监控',
+        children: group ? <MonitoringDashboard group={group} /> : null,
+      },
+      {
         key: 'nodes',
         label: '节点列表',
         children: (
@@ -605,7 +645,7 @@ const NodeGroupDetail = () => {
         ),
       },
     ]
-  }, [group, nodeColumns, tunnelColumns, tunnels, nodes, relations, relationColumns])
+  }, [group, nodeColumns, tunnelColumns, tunnels, nodes, relations, relationColumns, summary])
 
   if (!Number.isFinite(groupID) || groupID <= 0) {
     return (
@@ -645,34 +685,6 @@ const NodeGroupDetail = () => {
                 部署新节点
               </Button>
             </Space>
-          </Col>
-        </Row>
-      </Card>
-
-      <Card loading={loading}>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="总节点数" value={summary.totalNodes} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="在线节点数" value={summary.onlineNodes} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="总上行流量" value={formatBytes(summary.trafficIn)} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="总下行流量" value={formatBytes(summary.trafficOut)} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic title="活跃连接数" value={summary.totalConnections} />
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Statistic
-              title="在线率"
-              valueRender={() => (
-                <Progress type="circle" percent={summary.onlineRate} size={90} />
-              )}
-            />
           </Col>
         </Row>
       </Card>

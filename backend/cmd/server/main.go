@@ -154,9 +154,9 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.ErrorHandler())
-	r.Use(middleware.SecurityHeaders()) // 添加安全 HTTP 头
+	r.Use(middleware.SecurityHeaders())                 // 添加安全 HTTP 头
 	r.Use(middleware.RequestBodyLimit(1 * 1024 * 1024)) // 全局默认 1MB 限制
-	r.Use(middleware.RateLimit(20, 50)) // 降低全局速率限制：20 QPS，50 突发
+	r.Use(middleware.RateLimit(20, 50))                 // 降低全局速率限制：20 QPS，50 突发
 
 	r.GET("/health", func(c *gin.Context) {
 		licenseStatus := gin.H{
@@ -254,6 +254,8 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			auth.GET("/me", authHandler.Me)
 			auth.POST("/refresh", authHandler.Refresh)
 			auth.PUT("/password", authHandler.ChangePassword)
+			auth.POST("/email/code", authHandler.SendEmailChangeCode)
+			auth.PUT("/email", authHandler.ChangeEmail)
 			auth.POST("/revoke-all", authHandler.RevokeAllTokens) // 撤销所有 tokens
 		}
 

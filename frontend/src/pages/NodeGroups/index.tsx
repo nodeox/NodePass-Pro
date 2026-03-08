@@ -1,9 +1,11 @@
 import {
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   MoreOutlined,
   PoweroffOutlined,
+  ReloadOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
 import {
@@ -61,6 +63,8 @@ const NodeGroupsPage = () => {
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(10)
   const [total, setTotal] = useState<number>(0)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchLoading, setBatchLoading] = useState<boolean>(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -121,6 +125,93 @@ const NodeGroupsPage = () => {
           await loadData()
         } catch (error) {
           message.error(getErrorMessage(error, '删除节点组失败'))
+        }
+      },
+    })
+  }
+
+  const handleCopy = (record: NodeGroup) => {
+    navigate('/node-groups/create', {
+      state: {
+        copyFrom: record,
+      },
+    })
+  }
+
+  const handleBatchEnable = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要启用的节点组')
+      return
+    }
+    setBatchLoading(true)
+    try {
+      const promises = selectedRowKeys.map((id) => {
+        const item = items.find((g) => g.id === id)
+        if (item && !item.is_enabled) {
+          return nodeGroupApi.toggle(Number(id))
+        }
+        return Promise.resolve()
+      })
+      await Promise.all(promises)
+      message.success(`已启用 ${selectedRowKeys.length} 个节点组`)
+      setSelectedRowKeys([])
+      await loadData()
+    } catch (error) {
+      message.error(getErrorMessage(error, '批量启用失败'))
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleBatchDisable = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要禁用的节点组')
+      return
+    }
+    setBatchLoading(true)
+    try {
+      const promises = selectedRowKeys.map((id) => {
+        const item = items.find((g) => g.id === id)
+        if (item && item.is_enabled) {
+          return nodeGroupApi.toggle(Number(id))
+        }
+        return Promise.resolve()
+      })
+      await Promise.all(promises)
+      message.success(`已禁用 ${selectedRowKeys.length} 个节点组`)
+      setSelectedRowKeys([])
+      await loadData()
+    } catch (error) {
+      message.error(getErrorMessage(error, '批量禁用失败'))
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要删除的节点组')
+      return
+    }
+    Modal.confirm({
+      title: '批量删除节点组',
+      content: `确认删除选中的 ${selectedRowKeys.length} 个节点组吗？此操作不可恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setBatchLoading(true)
+        try {
+          await Promise.all(
+            selectedRowKeys.map((id) => nodeGroupApi.delete(Number(id)))
+          )
+          message.success(`已删除 ${selectedRowKeys.length} 个节点组`)
+          setSelectedRowKeys([])
+          await loadData()
+        } catch (error) {
+          message.error(getErrorMessage(error, '批量删除失败'))
+        } finally {
+          setBatchLoading(false)
         }
       },
     })
@@ -237,6 +328,14 @@ const NodeGroupsPage = () => {
                     label: '编辑',
                   },
                   {
+                    key: 'copy',
+                    icon: <CopyOutlined />,
+                    label: '复制',
+                  },
+                  {
+                    type: 'divider',
+                  },
+                  {
                     key: 'delete',
                     icon: <DeleteOutlined />,
                     label: '删除',
@@ -250,6 +349,10 @@ const NodeGroupsPage = () => {
                   }
                   if (key === 'edit') {
                     navigate(`/node-groups/${record.id}/edit`)
+                    return
+                  }
+                  if (key === 'copy') {
+                    handleCopy(record)
                     return
                   }
                   if (key === 'delete') {
@@ -274,9 +377,43 @@ const NodeGroupsPage = () => {
       className="shadow-sm"
       title={<Typography.Title level={4} style={{ margin: 0 }}>节点组管理</Typography.Title>}
       extra={
-        <Button type="primary" onClick={() => navigate('/node-groups/create')}>
-          创建节点组
-        </Button>
+        <Space>
+          {selectedRowKeys.length > 0 && (
+            <>
+              <Typography.Text type="secondary">
+                已选 {selectedRowKeys.length} 项
+              </Typography.Text>
+              <Button
+                icon={<PoweroffOutlined />}
+                onClick={() => void handleBatchEnable()}
+                loading={batchLoading}
+              >
+                批量启用
+              </Button>
+              <Button
+                icon={<PoweroffOutlined />}
+                onClick={() => void handleBatchDisable()}
+                loading={batchLoading}
+              >
+                批量禁用
+              </Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={handleBatchDelete}
+                loading={batchLoading}
+              >
+                批量删除
+              </Button>
+            </>
+          )}
+          <Button icon={<ReloadOutlined />} onClick={() => void loadData()} loading={loading}>
+            刷新
+          </Button>
+          <Button type="primary" onClick={() => navigate('/node-groups/create')}>
+            创建节点组
+          </Button>
+        </Space>
       }
     >
       <Tabs
@@ -295,6 +432,10 @@ const NodeGroupsPage = () => {
           columns={columns}
           size="small"
           scroll={{ x: 980 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+          }}
           pagination={{
             current: page,
             pageSize,

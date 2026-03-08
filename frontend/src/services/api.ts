@@ -158,6 +158,19 @@ const redirectToLogin = (): void => {
 export const unwrapData = <T>(response: AxiosResponse<ApiSuccessResponse<T>>): T =>
   response.data.data
 
+const normalizeLoginResult = (payload: unknown): LoginResult => {
+  const source = (payload ?? {}) as Record<string, unknown>
+  const token = String(source.token ?? source.access_token ?? '').trim()
+  const user = source.user
+  if (!token || !user || typeof user !== 'object') {
+    throw new Error('登录响应缺少有效凭证，请稍后重试')
+  }
+  return {
+    token,
+    user: user as LoginResult['user'],
+  }
+}
+
 let isRefreshing = false
 let pendingQueue: PendingRequest[] = []
 
@@ -280,12 +293,14 @@ export const authApi = {
   register: (payload: RegisterPayload) =>
     apiClient
       .post<ApiSuccessResponse<LoginResult>>('/auth/register', payload)
-      .then(unwrapData),
+      .then(unwrapData)
+      .then(normalizeLoginResult),
 
   login: (payload: LoginPayload) =>
     apiClient
       .post<ApiSuccessResponse<LoginResult>>('/auth/login', payload)
-      .then(unwrapData),
+      .then(unwrapData)
+      .then(normalizeLoginResult),
 
   me: () =>
     apiClient.get<ApiSuccessResponse<User>>('/auth/me').then(unwrapData),

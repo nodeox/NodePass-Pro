@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"nodepass-pro/backend/internal/config"
 	"nodepass-pro/backend/internal/services"
 	"nodepass-pro/backend/internal/utils"
 
@@ -126,6 +127,86 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	utils.SuccessResponse(c, nil, "密码修改成功")
 }
 
+// SendEmailChangeCode POST /api/v1/auth/email/code
+func (h *AuthHandler) SendEmailChangeCode(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	type requestPayload struct {
+		Password       string `json:"password"`
+		NewEmail       string `json:"new_email"`
+		NewEmailAlt    string `json:"newEmail"`
+		NewEmailLegacy string `json:"email"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.NewEmail) == "" {
+		req.NewEmail = strings.TrimSpace(req.NewEmailAlt)
+	}
+	if strings.TrimSpace(req.NewEmail) == "" {
+		req.NewEmail = strings.TrimSpace(req.NewEmailLegacy)
+	}
+
+	result, err := h.authService.SendEmailChangeCode(userID, req.Password, req.NewEmail)
+	if err != nil {
+		writeServiceError(c, err, "SEND_EMAIL_CODE_FAILED")
+		return
+	}
+
+	// 仅非生产环境返回调试验证码，便于联调。
+	if cfg := config.GlobalConfig; cfg != nil && strings.EqualFold(cfg.Server.Mode, "release") {
+		result.DebugCode = ""
+	}
+	if result.Sent {
+		utils.SuccessResponse(c, result, "验证码已发送")
+		return
+	}
+	utils.SuccessResponse(c, result, "SMTP 未启用，已生成调试验证码")
+}
+
+// ChangeEmail PUT /api/v1/auth/email
+func (h *AuthHandler) ChangeEmail(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	type requestPayload struct {
+		NewEmail       string `json:"new_email"`
+		NewEmailAlt    string `json:"newEmail"`
+		NewEmailLegacy string `json:"email"`
+		Code           string `json:"code"`
+		CodeAlt        string `json:"verify_code"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.NewEmail) == "" {
+		req.NewEmail = strings.TrimSpace(req.NewEmailAlt)
+	}
+	if strings.TrimSpace(req.NewEmail) == "" {
+		req.NewEmail = strings.TrimSpace(req.NewEmailLegacy)
+	}
+	if strings.TrimSpace(req.Code) == "" {
+		req.Code = strings.TrimSpace(req.CodeAlt)
+	}
+
+	if err := h.authService.ChangeEmail(userID, req.NewEmail, req.Code); err != nil {
+		writeServiceError(c, err, "CHANGE_EMAIL_FAILED")
+		return
+	}
+	utils.SuccessResponse(c, nil, "邮箱修改成功")
+}
+
 // LoginV2 POST /api/v1/auth/login/v2
 // 新版登录接口，返回 access token 和 refresh token
 func (h *AuthHandler) LoginV2(c *gin.Context) {
@@ -211,4 +292,3 @@ func (h *AuthHandler) RevokeAllTokens(c *gin.Context) {
 
 	utils.SuccessResponse(c, nil, "已撤销所有登录会话")
 }
-
