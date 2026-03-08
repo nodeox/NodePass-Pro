@@ -4,21 +4,27 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"nodepass-pro/backend/internal/models"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 // AlertService 告警服务
 type AlertService struct {
-	db *gorm.DB
+	db             *gorm.DB
+	channelService *NotificationChannelService
 }
 
 // NewAlertService 创建告警服务
 func NewAlertService(db *gorm.DB) *AlertService {
-	return &AlertService{db: db}
+	return &AlertService{
+		db:             db,
+		channelService: NewNotificationChannelService(db),
+	}
 }
 
 // CreateAlert 创建告警
@@ -42,7 +48,11 @@ func (s *AlertService) CreateAlert(alert *models.Alert) error {
 		existing.Message = alert.Message
 		existing.Status = models.AlertStatusFiring
 
-		return s.db.Save(&existing).Error
+		if err := s.db.Save(&existing).Error; err != nil {
+			return err
+		}
+		go s.dispatchAlertNotifications(&existing)
+		return nil
 	}
 
 	if err != gorm.ErrRecordNotFound {
@@ -55,7 +65,11 @@ func (s *AlertService) CreateAlert(alert *models.Alert) error {
 	alert.LastFiredAt = now
 	alert.Status = models.AlertStatusFiring
 
-	return s.db.Create(alert).Error
+	if err := s.db.Create(alert).Error; err != nil {
+		return err
+	}
+	go s.dispatchAlertNotifications(alert)
+	return nil
 }
 
 // ResolveAlert 解决告警
@@ -73,9 +87,9 @@ func (s *AlertService) ResolveAlert(id uint, resolvedBy uint, notes string) erro
 func (s *AlertService) AcknowledgeAlert(id uint, acknowledgedBy uint) error {
 	now := time.Now()
 	return s.db.Model(&models.Alert{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":           models.AlertStatusAcknowledged,
-		"acknowledged_at":  &now,
-		"acknowledged_by":  acknowledgedBy,
+		"status":          models.AlertStatusAcknowledged,
+		"acknowledged_at": &now,
+		"acknowledged_by": acknowledgedBy,
 	}).Error
 }
 
@@ -212,6 +226,41 @@ func (s *AlertService) generateFingerprint(alert *models.Alert) string {
 	)
 	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", hash)
+}
+
+func (s *AlertService) dispatchAlertNotifications(alert *models.Alert) {
+	if s.channelService == nil || alert == nil {
+		return
+	}
+	channels, err := s.channelService.GetEnabledChannels()
+	if err != nil {
+		zap.L().Warn("获取通知渠道失败", zap.Error(err))
+		return
+	}
+	if len(channels) == 0 {
+		return
+	}
+
+	sent := false
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		if err := s.channelService.sendNotification(channel, alert); err != nil {
+			zap.L().Warn("发送告警通知失败",
+				zap.Uint("alert_id", alert.ID),
+				zap.Uint("channel_id", channel.ID),
+				zap.String("channel_type", channel.Type),
+				zap.Error(err))
+			continue
+		}
+		sent = true
+	}
+	if sent {
+		if err := s.MarkNotificationSent(alert.ID); err != nil {
+			zap.L().Warn("更新告警通知状态失败", zap.Uint("alert_id", alert.ID), zap.Error(err))
+		}
+	}
 }
 
 // MarkNotificationSent 标记通知已发送
@@ -387,12 +436,59 @@ func (s *NotificationChannelService) TestChannel(id uint) error {
 
 // sendNotification 发送通知（简化版，实际实现需要根据渠道类型调用不同的发送逻辑）
 func (s *NotificationChannelService) sendNotification(channel *models.NotificationChannel, alert *models.Alert) error {
-	// TODO: 实现具体的通知发送逻辑
-	// 根据 channel.Type 调用不同的发送方法
-	// - email: 发送邮件
-	// - telegram: 发送 Telegram 消息
-	// - webhook: 发送 HTTP 请求
-	// - slack: 发送 Slack 消息
+	if channel == nil {
+		return fmt.Errorf("%w: 通知渠道不能为空", ErrInvalidParams)
+	}
+	if alert == nil {
+		return fmt.Errorf("%w: 告警内容不能为空", ErrInvalidParams)
+	}
 
-	return nil
+	switch strings.ToLower(strings.TrimSpace(channel.Type)) {
+	case "telegram":
+		type telegramChannelConfig struct {
+			TelegramID  string   `json:"telegram_id"`
+			TelegramIDs []string `json:"telegram_ids"`
+		}
+		var cfg telegramChannelConfig
+		if err := json.Unmarshal([]byte(channel.Config), &cfg); err != nil {
+			return fmt.Errorf("%w: 解析 Telegram 渠道配置失败: %v", ErrInvalidParams, err)
+		}
+
+		recipientSet := make(map[string]struct{})
+		if strings.TrimSpace(cfg.TelegramID) != "" {
+			recipientSet[strings.TrimSpace(cfg.TelegramID)] = struct{}{}
+		}
+		for _, item := range cfg.TelegramIDs {
+			trimmed := strings.TrimSpace(item)
+			if trimmed == "" {
+				continue
+			}
+			recipientSet[trimmed] = struct{}{}
+		}
+		if len(recipientSet) == 0 {
+			return fmt.Errorf("%w: Telegram 渠道缺少 telegram_id", ErrInvalidParams)
+		}
+
+		message := fmt.Sprintf(
+			"[%s] %s\n类型: %s\n资源: %s#%d\n详情: %s",
+			strings.ToUpper(string(alert.Level)),
+			alert.Title,
+			alert.Type,
+			alert.ResourceType,
+			alert.ResourceID,
+			alert.Message,
+		)
+
+		telegramService := NewTelegramService(s.db)
+		for telegramID := range recipientSet {
+			if err := telegramService.SendNotification(telegramID, message); err != nil {
+				_ = s.MarkFailed(channel.ID, err.Error())
+				return err
+			}
+		}
+		_ = s.MarkSent(channel.ID)
+		return nil
+	default:
+		return fmt.Errorf("%w: 暂不支持的通知渠道类型 %s", ErrInvalidParams, channel.Type)
+	}
 }

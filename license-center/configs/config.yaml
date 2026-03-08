@@ -11,6 +11,14 @@ database:
   db_name: "nodepass_license"
   dsn: "host=postgres port=5432 user=postgres password=postgres dbname=nodepass_license sslmode=disable TimeZone=UTC"
 
+redis:
+  enabled: false
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  prefix: "license:"
+
 jwt:
   secret: "change-this-license-secret"
   expire_hours: 24
@@ -19,3 +27,28 @@ admin:
   username: "admin"
   email: "admin@license.local"
   password: "ChangeMe123!"
+
+security:
+  rate_limit:
+    enabled: true
+    requests_per_second: 10
+    burst: 20
+  signature:
+    enabled: false
+    secret: "change-this-signature-secret"
+    time_window: 300
+  ip_whitelist:
+    enabled: false
+    allowed_ips: []
+    allowed_cidrs: []
+
+monitoring:
+  alert:
+    enabled: true
+    check_interval: 3600 # 秒
+    expiring_days: 30
+  cleanup:
+    enabled: true
+    verify_log_days: 90
+    webhook_log_days: 30
+    alert_days: 90

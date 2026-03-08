@@ -23,6 +23,7 @@ import { getErrorMessage } from '../../utils/error'
 
 type SystemConfigFormValues = {
   site_name: string
+  site_url: string
   register_enabled: boolean
   default_vip_level: number
   telegram_bot_token: string
@@ -77,6 +78,7 @@ const SystemConfig = () => {
       const config = await systemApi.config()
       form.setFieldsValue({
         site_name: config.site_name ?? 'NodePass Panel',
+        site_url: config.site_url ?? '',
         register_enabled: parseBoolean(config.register_enabled),
         default_vip_level: parseNumber(config.default_vip_level, 0),
         telegram_bot_token: config.telegram_bot_token ?? '',
@@ -113,6 +115,7 @@ const SystemConfig = () => {
     try {
       const payloadEntries: Array<{ key: string; value: string }> = [
         { key: 'site_name', value: values.site_name.trim() },
+        { key: 'site_url', value: values.site_url.trim() },
         { key: 'register_enabled', value: String(values.register_enabled) },
         { key: 'default_vip_level', value: String(values.default_vip_level) },
         { key: 'telegram_bot_token', value: values.telegram_bot_token.trim() },
@@ -170,6 +173,34 @@ const SystemConfig = () => {
                   rules={[{ required: true, message: '请输入站点名称' }]}
                 >
                   <Input placeholder="NodePass Panel" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="站点地址 (用于 Telegram SSO)"
+                  name="site_url"
+                  rules={[
+                    {
+                      validator(_, value) {
+                        const normalized = String(value ?? '').trim()
+                        if (!normalized) {
+                          return Promise.resolve()
+                        }
+                        try {
+                          const target = normalized.includes('://') ? normalized : `https://${normalized}`
+                          const parsed = new URL(target)
+                          if (!parsed.hostname) {
+                            return Promise.reject(new Error('站点地址格式不正确'))
+                          }
+                          return Promise.resolve()
+                        } catch {
+                          return Promise.reject(new Error('站点地址格式不正确'))
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  <Input placeholder="https://panel.example.com" />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>

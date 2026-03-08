@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"nodepass-license-center/internal/cache"
 	"nodepass-license-center/internal/config"
 	"nodepass-license-center/internal/database"
 	"nodepass-license-center/internal/handlers"
@@ -15,9 +17,10 @@ import (
 	"nodepass-license-center/internal/web"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
-var appVersion = "0.1.0"
+var appVersion = "0.2.0"
 
 func main() {
 	var configFile string
@@ -38,15 +41,39 @@ func main() {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
 
-	authService := services.NewAuthService(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
-	licenseService := services.NewLicenseService(db)
+	// 初始化 Redis 缓存（可选）
+	var redisCache *cache.RedisCache
+	if cfg.Redis.Enabled {
+		redisCache, err = cache.NewRedisCache(
+			fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+			cfg.Redis.Password,
+			cfg.Redis.DB,
+			cfg.Redis.Prefix,
+		)
+		if err != nil {
+			log.Printf("Redis 连接失败，将不使用缓存: %v", err)
+		} else {
+			log.Printf("Redis 缓存已启用")
+		}
+	}
 
+	// 初始化服务
+	authService := services.NewAuthService(db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
+	webhookService := services.NewWebhookService(db)
+	alertService := services.NewAlertService(db, redisCache, webhookService)
+	domainBindingService := services.NewDomainBindingService(db, webhookService, alertService)
+	licenseService := services.NewLicenseService(db, domainBindingService)
+	extensionService := services.NewExtensionService(db, webhookService)
+	monitoringService := services.NewMonitoringService(db, redisCache)
+
+	// 启动时过期清理
 	if affected, expireErr := licenseService.ExpireOverdueLicenses(); expireErr != nil {
 		log.Printf("启动时过期清理失败: %v", expireErr)
 	} else if affected > 0 {
 		log.Printf("启动时已标记过期授权: %d", affected)
 	}
 
+	// 定时任务：过期清理
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -62,12 +89,66 @@ func main() {
 		}
 	}()
 
+	// 定时任务：告警检查
+	if cfg.Monitoring.Alert.Enabled {
+		go func() {
+			interval := time.Duration(cfg.Monitoring.Alert.CheckInterval) * time.Second
+			if interval < 60*time.Second {
+				interval = 60 * time.Second
+			}
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				// 检查即将过期的授权码
+				if err := alertService.CheckExpiringLicenses(cfg.Monitoring.Alert.ExpiringDays); err != nil {
+					log.Printf("检查过期告警失败: %v", err)
+				}
+
+				// 检查配额超限
+				if err := alertService.CheckQuotaExceeded(); err != nil {
+					log.Printf("检查配额告警失败: %v", err)
+				}
+			}
+		}()
+		log.Printf("告警监控已启用，检查间隔: %d 秒", cfg.Monitoring.Alert.CheckInterval)
+	}
+
+	// 初始化处理器
 	authHandler := handlers.NewAuthHandler(authService)
 	licenseHandler := handlers.NewLicenseHandler(licenseService)
+	extensionHandler := handlers.NewExtensionHandler(extensionService, webhookService)
+	monitoringHandler := handlers.NewMonitoringHandler(monitoringService, alertService)
+	domainBindingHandler := handlers.NewDomainBindingHandler(domainBindingService)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
+
+	// 限流中间件
+	if cfg.Security.RateLimit.Enabled {
+		limiter := middleware.NewRateLimiter(
+			rate.Limit(cfg.Security.RateLimit.RequestsPerSecond),
+			cfg.Security.RateLimit.Burst,
+		)
+		limiter.CleanupOldLimiters()
+		r.Use(middleware.RateLimitMiddleware(limiter))
+		log.Printf("限流已启用: %d req/s, burst: %d", cfg.Security.RateLimit.RequestsPerSecond, cfg.Security.RateLimit.Burst)
+	}
+
+	// IP 白名单中间件
+	if cfg.Security.IPWhitelist.Enabled {
+		ipConfig, err := middleware.NewIPWhitelistConfig(
+			cfg.Security.IPWhitelist.AllowedIPs,
+			cfg.Security.IPWhitelist.AllowedCIDRs,
+		)
+		if err != nil {
+			log.Fatalf("IP 白名单配置错误: %v", err)
+		}
+		ipConfig.SkipPaths = []string{"/health", "/"}
+		r.Use(middleware.IPWhitelistMiddleware(ipConfig))
+		log.Printf("IP 白名单已启用")
+	}
 
 	r.GET("/console", func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", web.ConsoleIndexHTML)
@@ -99,13 +180,16 @@ func main() {
 	admin := api.Group("")
 	admin.Use(middleware.AdminAuth(authService))
 	{
+		// 认证
 		admin.GET("/auth/me", authHandler.Me)
 
+		// 套餐管理
 		admin.GET("/plans", licenseHandler.ListPlans)
 		admin.POST("/plans", licenseHandler.CreatePlan)
 		admin.PUT("/plans/:id", licenseHandler.UpdatePlan)
 		admin.DELETE("/plans/:id", licenseHandler.DeletePlan)
 
+		// 授权码管理
 		admin.POST("/licenses/generate", licenseHandler.GenerateLicenses)
 		admin.GET("/licenses", licenseHandler.ListLicenses)
 		admin.GET("/licenses/:id", licenseHandler.GetLicense)
@@ -116,8 +200,50 @@ func main() {
 		admin.GET("/licenses/:id/activations", licenseHandler.ListActivations)
 		admin.DELETE("/licenses/:id/activations/:activationId", licenseHandler.UnbindActivation)
 
-		admin.GET("/verify-logs", licenseHandler.ListVerifyLogs)
+		// 授权码扩展功能
+		admin.POST("/licenses/:id/transfer", extensionHandler.TransferLicense)
+		admin.GET("/licenses/:id/tags", extensionHandler.GetLicenseTags)
+		admin.POST("/licenses/:id/tags", extensionHandler.AddTagsToLicense)
+		admin.DELETE("/licenses/:id/tags", extensionHandler.RemoveTagsFromLicense)
+		admin.POST("/licenses/batch/update", extensionHandler.BatchUpdateLicenses)
+		admin.POST("/licenses/batch/revoke", extensionHandler.BatchRevokeLicenses)
+		admin.POST("/licenses/batch/restore", extensionHandler.BatchRestoreLicenses)
+		admin.POST("/licenses/batch/delete", extensionHandler.BatchDeleteLicenses)
+
+		// 域名绑定管理
+		admin.POST("/licenses/:id/domain/change", domainBindingHandler.ChangeDomain)
+		admin.POST("/licenses/:id/domain/unbind", domainBindingHandler.UnbindDomain)
+		admin.POST("/licenses/:id/domain/lock", domainBindingHandler.LockDomain)
+		admin.GET("/licenses/:id/domain/history", domainBindingHandler.GetBindingHistory)
+
+		// 标签管理
+		admin.GET("/tags", extensionHandler.ListTags)
+		admin.POST("/tags", extensionHandler.CreateTag)
+		admin.PUT("/tags/:id", extensionHandler.UpdateTag)
+		admin.DELETE("/tags/:id", extensionHandler.DeleteTag)
+
+		// Webhook 管理
+		admin.GET("/webhooks", extensionHandler.ListWebhooks)
+		admin.POST("/webhooks", extensionHandler.CreateWebhook)
+		admin.PUT("/webhooks/:id", extensionHandler.UpdateWebhook)
+		admin.DELETE("/webhooks/:id", extensionHandler.DeleteWebhook)
+		admin.GET("/webhook-logs", extensionHandler.ListWebhookLogs)
+
+		// 监控与统计
+		admin.GET("/dashboard", monitoringHandler.GetDashboard)
+		admin.GET("/verify-trend", monitoringHandler.GetVerifyTrend)
+		admin.GET("/top-customers", monitoringHandler.GetTopCustomers)
 		admin.GET("/stats", licenseHandler.Stats)
+
+		// 告警管理
+		admin.GET("/alerts", monitoringHandler.ListAlerts)
+		admin.POST("/alerts/:id/read", monitoringHandler.MarkAlertRead)
+		admin.POST("/alerts/read-all", monitoringHandler.MarkAllAlertsRead)
+		admin.DELETE("/alerts/:id", monitoringHandler.DeleteAlert)
+		admin.GET("/alert-stats", monitoringHandler.GetAlertStats)
+
+		// 日志查询
+		admin.GET("/verify-logs", licenseHandler.ListVerifyLogs)
 	}
 
 	srv := &http.Server{

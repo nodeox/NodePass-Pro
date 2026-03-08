@@ -89,7 +89,7 @@ const EditNodeGroup = () => {
         name: detail.name ?? '',
         type: detail.type,
         description: detail.description ?? '',
-        allowed_protocols: detail.config?.allowed_protocols ?? ['tcp'],
+        allowed_protocols: detail.config?.allowed_protocols ?? ['tcp', 'udp'],
         port_start: detail.config?.port_range?.start ?? 1,
         port_end: detail.config?.port_range?.end ?? 65535,
         require_exit_group: detail.config?.entry_config?.require_exit_group ?? false,
@@ -269,6 +269,10 @@ const EditNodeGroup = () => {
                   options={[
                     { label: 'TCP', value: 'tcp' },
                     { label: 'UDP', value: 'udp' },
+                    { label: 'WebSocket', value: 'ws' },
+                    { label: 'WebSocket SSL', value: 'wss' },
+                    { label: 'TLS', value: 'tls' },
+                    { label: 'QUIC', value: 'quic' },
                   ]}
                 />
               </Form.Item>

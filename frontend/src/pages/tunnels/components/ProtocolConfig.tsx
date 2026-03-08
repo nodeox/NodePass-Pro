@@ -124,8 +124,6 @@ const ProtocolConfig = ({ protocol }: ProtocolConfigProps) => {
         <Select
           placeholder="TLS 1.2"
           options={[
-            { label: 'TLS 1.0', value: 'tls1.0' },
-            { label: 'TLS 1.1', value: 'tls1.1' },
             { label: 'TLS 1.2', value: 'tls1.2' },
             { label: 'TLS 1.3', value: 'tls1.3' },
           ]}

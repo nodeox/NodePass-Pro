@@ -174,7 +174,7 @@ func (s *TunnelService) Create(userID uint, req *CreateTunnelRequest) (*models.T
 	}
 
 	// 验证配置
-	if err := validateTunnelConfig(tunnelConfig); err != nil {
+	if err := validateTunnelConfig(protocol, tunnelConfig); err != nil {
 		return nil, err
 	}
 
@@ -419,7 +419,7 @@ func (s *TunnelService) Update(userID uint, id uint, req *UpdateTunnelRequest) (
 	}
 
 	if req.Config != nil {
-		if err = validateTunnelConfig(req.Config); err != nil {
+		if err = validateTunnelConfig(nextProtocol, req.Config); err != nil {
 			return nil, err
 		}
 		raw, marshalErr := json.Marshal(req.Config)
@@ -884,7 +884,7 @@ func (s *TunnelService) collectAllInstanceIDsByGroups(tx *gorm.DB, groupIDs []ui
 }
 
 // validateTunnelConfig 验证隧道配置。
-func validateTunnelConfig(cfg *models.TunnelConfig) error {
+func validateTunnelConfig(protocol string, cfg *models.TunnelConfig) error {
 	if cfg == nil {
 		return nil
 	}
@@ -922,7 +922,7 @@ func validateTunnelConfig(cfg *models.TunnelConfig) error {
 
 	// 验证协议配置
 	if cfg.ProtocolConfig != nil {
-		if err := validateProtocolConfig(cfg.ProtocolConfig); err != nil {
+		if err := validateProtocolConfig(protocol, cfg.ProtocolConfig); err != nil {
 			return err
 		}
 	}
@@ -930,67 +930,74 @@ func validateTunnelConfig(cfg *models.TunnelConfig) error {
 	return nil
 }
 
-// validateProtocolConfig 验证协议特定配置。
-func validateProtocolConfig(cfg *models.ProtocolConfig) error {
+// validateProtocolConfig 按协议验证协议特定配置。
+func validateProtocolConfig(protocol string, cfg *models.ProtocolConfig) error {
 	if cfg == nil {
 		return nil
 	}
 
-	// 验证 TCP 配置
-	if cfg.KeepaliveInterval != nil && (*cfg.KeepaliveInterval < 1 || *cfg.KeepaliveInterval > 300) {
-		return fmt.Errorf("%w: keepalive_interval 必须在 1-300 秒之间", ErrInvalidParams)
-	}
-	if cfg.ConnectTimeout != nil && (*cfg.ConnectTimeout < 1 || *cfg.ConnectTimeout > 60) {
-		return fmt.Errorf("%w: connect_timeout 必须在 1-60 秒之间", ErrInvalidParams)
-	}
-	if cfg.ReadTimeout != nil && (*cfg.ReadTimeout < 1 || *cfg.ReadTimeout > 300) {
-		return fmt.Errorf("%w: read_timeout 必须在 1-300 秒之间", ErrInvalidParams)
-	}
-
-	// 验证 UDP 配置
-	if cfg.BufferSize != nil && (*cfg.BufferSize < 1024 || *cfg.BufferSize > 65536) {
-		return fmt.Errorf("%w: buffer_size 必须在 1024-65536 字节之间", ErrInvalidParams)
-	}
-	if cfg.SessionTimeout != nil && (*cfg.SessionTimeout < 10 || *cfg.SessionTimeout > 600) {
-		return fmt.Errorf("%w: session_timeout 必须在 10-600 秒之间", ErrInvalidParams)
-	}
-
-	// 验证 WebSocket 配置
-	if cfg.WSPath != nil && *cfg.WSPath != "" && !strings.HasPrefix(*cfg.WSPath, "/") {
-		return fmt.Errorf("%w: ws_path 必须以 / 开头", ErrInvalidParams)
-	}
-	if cfg.PingInterval != nil && (*cfg.PingInterval < 5 || *cfg.PingInterval > 300) {
-		return fmt.Errorf("%w: ping_interval 必须在 5-300 秒之间", ErrInvalidParams)
-	}
-	if cfg.MaxMessageSize != nil && (*cfg.MaxMessageSize < 1 || *cfg.MaxMessageSize > 10240) {
-		return fmt.Errorf("%w: max_message_size 必须在 1-10240 KB 之间", ErrInvalidParams)
-	}
-
-	// 验证 TLS 配置
-	if cfg.TLSVersion != nil {
-		validVersions := map[string]bool{
-			"tls1.0": true,
-			"tls1.1": true,
-			"tls1.2": true,
-			"tls1.3": true,
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "tcp":
+		if cfg.KeepaliveInterval != nil && (*cfg.KeepaliveInterval < 1 || *cfg.KeepaliveInterval > 300) {
+			return fmt.Errorf("%w: keepalive_interval 必须在 1-300 秒之间", ErrInvalidParams)
 		}
-		if !validVersions[*cfg.TLSVersion] {
-			return fmt.Errorf("%w: tls_version 必须是 tls1.0/tls1.1/tls1.2/tls1.3", ErrInvalidParams)
+		if cfg.ConnectTimeout != nil && (*cfg.ConnectTimeout < 1 || *cfg.ConnectTimeout > 60) {
+			return fmt.Errorf("%w: connect_timeout 必须在 1-60 秒之间", ErrInvalidParams)
 		}
-	}
+		if cfg.ReadTimeout != nil && (*cfg.ReadTimeout < 1 || *cfg.ReadTimeout > 300) {
+			return fmt.Errorf("%w: read_timeout 必须在 1-300 秒之间", ErrInvalidParams)
+		}
+		return nil
 
-	// 验证 QUIC 配置
-	if cfg.MaxStreams != nil && (*cfg.MaxStreams < 1 || *cfg.MaxStreams > 1000) {
-		return fmt.Errorf("%w: max_streams 必须在 1-1000 之间", ErrInvalidParams)
-	}
-	if cfg.InitialWindow != nil && (*cfg.InitialWindow < 16 || *cfg.InitialWindow > 1024) {
-		return fmt.Errorf("%w: initial_window 必须在 16-1024 KB 之间", ErrInvalidParams)
-	}
-	if cfg.IdleTimeout != nil && (*cfg.IdleTimeout < 10 || *cfg.IdleTimeout > 600) {
-		return fmt.Errorf("%w: idle_timeout 必须在 10-600 秒之间", ErrInvalidParams)
-	}
+	case "udp":
+		if cfg.BufferSize != nil && (*cfg.BufferSize < 1024 || *cfg.BufferSize > 65536) {
+			return fmt.Errorf("%w: buffer_size 必须在 1024-65536 字节之间", ErrInvalidParams)
+		}
+		if cfg.SessionTimeout != nil && (*cfg.SessionTimeout < 10 || *cfg.SessionTimeout > 600) {
+			return fmt.Errorf("%w: session_timeout 必须在 10-600 秒之间", ErrInvalidParams)
+		}
+		return nil
 
-	return nil
+	case "ws", "wss":
+		if cfg.WSPath != nil && *cfg.WSPath != "" && !strings.HasPrefix(*cfg.WSPath, "/") {
+			return fmt.Errorf("%w: ws_path 必须以 / 开头", ErrInvalidParams)
+		}
+		if cfg.PingInterval != nil && (*cfg.PingInterval < 5 || *cfg.PingInterval > 300) {
+			return fmt.Errorf("%w: ping_interval 必须在 5-300 秒之间", ErrInvalidParams)
+		}
+		if cfg.MaxMessageSize != nil && (*cfg.MaxMessageSize < 1 || *cfg.MaxMessageSize > 10240) {
+			return fmt.Errorf("%w: max_message_size 必须在 1-10240 KB 之间", ErrInvalidParams)
+		}
+		return nil
+
+	case "tls":
+		if cfg.TLSVersion != nil {
+			version := strings.ToLower(strings.TrimSpace(*cfg.TLSVersion))
+			validVersions := map[string]bool{
+				"tls1.2": true,
+				"tls1.3": true,
+			}
+			if !validVersions[version] {
+				return fmt.Errorf("%w: tls_version 必须是 tls1.2/tls1.3", ErrInvalidParams)
+			}
+		}
+		return nil
+
+	case "quic":
+		if cfg.MaxStreams != nil && (*cfg.MaxStreams < 1 || *cfg.MaxStreams > 1000) {
+			return fmt.Errorf("%w: max_streams 必须在 1-1000 之间", ErrInvalidParams)
+		}
+		if cfg.InitialWindow != nil && (*cfg.InitialWindow < 16 || *cfg.InitialWindow > 1024) {
+			return fmt.Errorf("%w: initial_window 必须在 16-1024 KB 之间", ErrInvalidParams)
+		}
+		if cfg.IdleTimeout != nil && (*cfg.IdleTimeout < 10 || *cfg.IdleTimeout > 600) {
+			return fmt.Errorf("%w: idle_timeout 必须在 10-600 秒之间", ErrInvalidParams)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("%w: protocol 不支持", ErrInvalidParams)
+	}
 }
 
 func tunnelUniqueUint(values []uint) []uint {

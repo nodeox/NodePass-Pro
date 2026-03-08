@@ -304,7 +304,7 @@ type ProtocolConfig struct {
 	Compression    *bool   `json:"compression,omitempty"`
 
 	// TLS 配置
-	TLSVersion *string `json:"tls_version,omitempty"` // tls1.0, tls1.1, tls1.2, tls1.3
+	TLSVersion *string `json:"tls_version,omitempty"` // tls1.2, tls1.3
 	VerifyCert *bool   `json:"verify_cert,omitempty"`
 	SNI        *string `json:"sni,omitempty"`
 

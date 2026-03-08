@@ -5,6 +5,8 @@ import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom'
 import MainLayout from './components/Layout/MainLayout'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
+import TelegramCallback from './pages/auth/TelegramCallback'
+import ForgotPassword from './pages/auth/ForgotPassword'
 import BenefitCodeManage from './pages/benefit-codes/BenefitCodeManage'
 import RedeemCode from './pages/benefit-codes/RedeemCode'
 import Dashboard from './pages/dashboard/Dashboard'
@@ -102,6 +104,14 @@ const router = createBrowserRouter([
   {
     path: '/register',
     element: <Register />,
+  },
+  {
+    path: '/telegram/callback',
+    element: <TelegramCallback />,
+  },
+  {
+    path: '/forgot-password',
+    element: <ForgotPassword />,
   },
   {
     path: '/',

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,8 +27,14 @@ import (
 )
 
 const (
-	telegramBindCodeTTL = 10 * time.Minute
+	telegramBindCodeTTL  = 10 * time.Minute
+	telegramSSOTicketTTL = 5 * time.Minute
 )
+
+// TelegramSSOTicketTTL 返回 Telegram SSO 票据有效期。
+func TelegramSSOTicketTTL() time.Duration {
+	return telegramSSOTicketTTL
+}
 
 // TelegramService Telegram Bot 与 Widget 登录服务。
 type TelegramService struct {
@@ -63,6 +70,13 @@ type bindCodePayload struct {
 	Email     string `json:"email"`
 	Code      string `json:"code"`
 	ExpiresAt int64  `json:"expires_at"`
+}
+
+type telegramSSOTicketPayload struct {
+	UserID      uint   `json:"user_id"`
+	TelegramID  string `json:"telegram_id"`
+	RedirectURI string `json:"redirect_uri"`
+	ExpiresAt   int64  `json:"expires_at"`
 }
 
 // NewTelegramService 创建 Telegram 服务实例。
@@ -174,6 +188,18 @@ func (s *TelegramService) HandleCommand(update TelegramUpdate) error {
 			user.Status, user.VipLevel, user.TrafficUsed, user.TrafficQuota, usagePercent,
 		)
 		return s.SendNotification(strconv.FormatInt(update.Message.From.ID, 10), msg)
+	case "/login":
+		telegramID := strconv.FormatInt(update.Message.From.ID, 10)
+		user, err := s.getUserByTelegramID(telegramID)
+		if err != nil {
+			return s.SendNotification(telegramID, "当前 Telegram 未绑定任何账户，请先在面板执行绑定。")
+		}
+		loginURL, _, expiresAt, err := s.GenerateSSOLoginURL(user.ID, "", "")
+		if err != nil {
+			return s.SendNotification(telegramID, "生成登录链接失败，请稍后重试。")
+		}
+		msg := "单点登录链接（一次性，5分钟内有效）：\n" + loginURL + "\n\n失效时间：" + expiresAt.Local().Format("2006-01-02 15:04:05")
+		return s.SendNotification(telegramID, msg)
 	case "/unbind":
 		user, err := s.getUserByTelegramID(strconv.FormatInt(update.Message.From.ID, 10))
 		if err != nil {
@@ -293,6 +319,144 @@ func (s *TelegramService) VerifyWidgetLogin(data map[string]string) (string, *mo
 	return token, user, nil
 }
 
+// GenerateSSOLoginURL 生成 Telegram SSO 一次性登录链接。
+func (s *TelegramService) GenerateSSOLoginURL(userID uint, redirectURI string, panelURL string) (string, string, time.Time, error) {
+	if userID == 0 {
+		return "", "", time.Time{}, fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", "", time.Time{}, fmt.Errorf("%w: 用户不存在", ErrNotFound)
+		}
+		return "", "", time.Time{}, fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	if user.TelegramID == nil || strings.TrimSpace(*user.TelegramID) == "" {
+		return "", "", time.Time{}, fmt.Errorf("%w: 账户未绑定 Telegram，无法生成 SSO 登录链接", ErrForbidden)
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Status), "banned") {
+		return "", "", time.Time{}, fmt.Errorf("%w: 账户已被封禁", ErrForbidden)
+	}
+
+	normalizedRedirect := strings.TrimSpace(redirectURI)
+	if normalizedRedirect == "" {
+		normalizedRedirect = "/"
+	} else if !strings.HasPrefix(normalizedRedirect, "/") {
+		normalizedRedirect = "/" + normalizedRedirect
+	}
+
+	ticket, err := generateAuthToken()
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("生成 SSO 票据失败: %w", err)
+	}
+	expiresAt := time.Now().Add(telegramSSOTicketTTL)
+	payload := telegramSSOTicketPayload{
+		UserID:      user.ID,
+		TelegramID:  strings.TrimSpace(*user.TelegramID),
+		RedirectURI: normalizedRedirect,
+		ExpiresAt:   expiresAt.Unix(),
+	}
+	rawPayload, _ := json.Marshal(payload)
+	key := "telegram_sso_ticket:" + hashTokenSHA256(ticket)
+	value := string(rawPayload)
+	description := "Telegram SSO 一次性登录票据"
+
+	var existing models.SystemConfig
+	queryErr := s.db.Where("key = ?", key).First(&existing).Error
+	if queryErr == nil {
+		if err := s.db.Model(&models.SystemConfig{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+			"value":       value,
+			"description": description,
+		}).Error; err != nil {
+			return "", "", time.Time{}, fmt.Errorf("保存 SSO 票据失败: %w", err)
+		}
+	} else if errors.Is(queryErr, gorm.ErrRecordNotFound) {
+		item := models.SystemConfig{
+			Key:         key,
+			Value:       &value,
+			Description: &description,
+		}
+		if err := s.db.Create(&item).Error; err != nil {
+			return "", "", time.Time{}, fmt.Errorf("保存 SSO 票据失败: %w", err)
+		}
+	} else {
+		return "", "", time.Time{}, fmt.Errorf("保存 SSO 票据失败: %w", queryErr)
+	}
+
+	publicBaseURL, err := s.resolvePublicBaseURL(panelURL)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	loginURL := publicBaseURL + "/telegram/callback?ticket=" + url.QueryEscape(ticket)
+	return loginURL, ticket, expiresAt, nil
+}
+
+// ConsumeSSOTicket 消费一次性 SSO 登录票据并签发 JWT。
+func (s *TelegramService) ConsumeSSOTicket(ticket string) (string, *models.User, string, error) {
+	ticket = strings.TrimSpace(ticket)
+	if ticket == "" {
+		return "", nil, "", fmt.Errorf("%w: ticket 不能为空", ErrInvalidParams)
+	}
+
+	key := "telegram_sso_ticket:" + hashTokenSHA256(ticket)
+	var ticketRecord models.SystemConfig
+	if err := s.db.Where("key = ?", key).First(&ticketRecord).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil, "", fmt.Errorf("%w: 登录票据无效或已失效", ErrUnauthorized)
+		}
+		return "", nil, "", fmt.Errorf("查询登录票据失败: %w", err)
+	}
+	if ticketRecord.Value == nil || strings.TrimSpace(*ticketRecord.Value) == "" {
+		return "", nil, "", fmt.Errorf("%w: 登录票据无效", ErrUnauthorized)
+	}
+
+	var payload telegramSSOTicketPayload
+	if err := json.Unmarshal([]byte(*ticketRecord.Value), &payload); err != nil {
+		return "", nil, "", fmt.Errorf("%w: 登录票据格式错误", ErrUnauthorized)
+	}
+	if payload.UserID == 0 {
+		return "", nil, "", fmt.Errorf("%w: 登录票据缺少用户信息", ErrUnauthorized)
+	}
+	if time.Now().Unix() > payload.ExpiresAt {
+		_ = s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error
+		return "", nil, "", fmt.Errorf("%w: 登录票据已过期", ErrUnauthorized)
+	}
+
+	var user models.User
+	if err := s.db.First(&user, payload.UserID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			_ = s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error
+			return "", nil, "", fmt.Errorf("%w: 用户不存在", ErrNotFound)
+		}
+		return "", nil, "", fmt.Errorf("查询用户失败: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Status), "banned") {
+		return "", nil, "", fmt.Errorf("%w: 账户已被封禁", ErrForbidden)
+	}
+	if user.TelegramID == nil || strings.TrimSpace(*user.TelegramID) == "" {
+		return "", nil, "", fmt.Errorf("%w: 用户未绑定 Telegram", ErrForbidden)
+	}
+	if payload.TelegramID != "" && strings.TrimSpace(*user.TelegramID) != payload.TelegramID {
+		return "", nil, "", fmt.Errorf("%w: 登录票据与当前账号不匹配", ErrUnauthorized)
+	}
+
+	token, err := generateUserJWT(user.ID, user.Role)
+	if err != nil {
+		return "", nil, "", err
+	}
+	if err := s.db.Where("id = ?", ticketRecord.ID).Delete(&models.SystemConfig{}).Error; err != nil {
+		return "", nil, "", fmt.Errorf("清理登录票据失败: %w", err)
+	}
+
+	redirectURI := strings.TrimSpace(payload.RedirectURI)
+	if redirectURI == "" {
+		redirectURI = "/"
+	}
+	return token, &user, redirectURI, nil
+}
+
 // SendNotification 发送 Telegram 消息。
 func (s *TelegramService) SendNotification(telegramID string, message string) error {
 	if strings.TrimSpace(telegramID) == "" {
@@ -316,6 +480,25 @@ func (s *TelegramService) SendNotification(telegramID string, message string) er
 	form.Set("text", message)
 	_, err := s.callTelegramAPI("sendMessage", form)
 	return err
+}
+
+// SendUserNotification 给已绑定 Telegram 的用户发送通知。
+func (s *TelegramService) SendUserNotification(userID uint, message string) error {
+	if userID == 0 {
+		return fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: 用户不存在", ErrNotFound)
+		}
+		return fmt.Errorf("查询用户失败: %w", err)
+	}
+	if user.TelegramID == nil || strings.TrimSpace(*user.TelegramID) == "" {
+		return fmt.Errorf("%w: 用户未绑定 Telegram", ErrForbidden)
+	}
+	return s.SendNotification(strings.TrimSpace(*user.TelegramID), message)
 }
 
 // CreateBindCode 为用户生成绑定验证码。
@@ -596,6 +779,53 @@ func resolveTelegramWebhookSecret(cfg *config.Config, botToken string) string {
 	secretToken = hex.EncodeToString(sum[:16])
 	cfg.Telegram.SecretToken = secretToken
 	return secretToken
+}
+
+func (s *TelegramService) resolvePublicBaseURL(raw string) (string, error) {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		if siteURL, err := s.getSystemConfigValue("site_url"); err == nil {
+			candidate = siteURL
+		}
+	}
+	if candidate == "" {
+		candidate = strings.TrimSpace(os.Getenv("NODEPASS_PUBLIC_URL"))
+	}
+	if candidate == "" {
+		candidate = strings.TrimSpace(os.Getenv("NODEPASS_HUB_URL"))
+	}
+	if candidate == "" {
+		cfg := config.GlobalConfig
+		if cfg != nil {
+			candidate = strings.TrimSpace(cfg.Telegram.WebhookURL)
+		}
+	}
+	if candidate == "" {
+		return "", fmt.Errorf("%w: 无法确定公网地址，请在系统配置中设置 site_url", ErrInvalidParams)
+	}
+	if !strings.Contains(candidate, "://") {
+		candidate = "https://" + candidate
+	}
+
+	parsed, err := url.Parse(candidate)
+	if err != nil || strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("%w: 公网地址无效", ErrInvalidParams)
+	}
+	return strings.TrimRight(parsed.Scheme+"://"+parsed.Host, "/"), nil
+}
+
+func (s *TelegramService) getSystemConfigValue(key string) (string, error) {
+	var item models.SystemConfig
+	if err := s.db.Where("key = ?", strings.TrimSpace(key)).First(&item).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	if item.Value == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(*item.Value), nil
 }
 
 func normalizeCommand(raw string) string {

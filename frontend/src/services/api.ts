@@ -36,6 +36,8 @@ import type {
   RegisterPayload,
   SendEmailChangeCodePayload,
   SendEmailChangeCodeResult,
+  TelegramSSOLoginResult,
+  TelegramSSOURLResult,
   TrafficQuota,
   TrafficRecordItem,
   TrafficRecordsQuery,
@@ -503,6 +505,28 @@ export const telegramApi = {
   login: (payload: Record<string, unknown>) =>
     apiClient
       .post<ApiSuccessResponse<LoginResult>>('/telegram/login', payload)
+      .then(unwrapData)
+      .then(normalizeLoginResult),
+
+  generateSSOURL: (payload?: { redirect_uri?: string }) =>
+    apiClient
+      .post<ApiSuccessResponse<TelegramSSOURLResult>>('/telegram/sso-url', payload ?? {})
+      .then(unwrapData),
+
+  ssoLogin: (ticket: string) =>
+    apiClient
+      .get<ApiSuccessResponse<TelegramSSOLoginResult>>('/telegram/sso-login', {
+        params: { ticket },
+      })
+      .then(unwrapData)
+      .then((result) => ({
+        ...normalizeLoginResult(result),
+        redirect_uri: result.redirect_uri,
+      })),
+
+  notify: (messageText: string) =>
+    apiClient
+      .post<ApiSuccessResponse<null>>('/telegram/notify', { message: messageText })
       .then(unwrapData),
 }
 

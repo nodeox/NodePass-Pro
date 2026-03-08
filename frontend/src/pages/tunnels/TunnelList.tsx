@@ -28,7 +28,7 @@ import {
   Typography,
   message,
 } from 'antd'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
@@ -40,6 +40,7 @@ import type {
   LoadBalanceStrategy,
   NodeGroup,
   NodeGroupRelation,
+  ProtocolConfig as TunnelProtocolConfig,
   Tunnel,
   TunnelConfig,
 } from '../../types/nodeGroup'
@@ -62,6 +63,63 @@ type TunnelFormValues = {
   ip_type: 'ipv4' | 'ipv6' | 'auto'
   enable_proxy_protocol: boolean
   forward_targets: ForwardTarget[]
+  protocol_config?: TunnelProtocolConfig
+}
+
+const hasProtocolConfigValue = (config: TunnelProtocolConfig): boolean =>
+  Object.values(config).some((value) => {
+    if (value === undefined || value === null) {
+      return false
+    }
+    if (typeof value === 'string') {
+      return value.trim() !== ''
+    }
+    return true
+  })
+
+const sanitizeProtocolConfig = (
+  protocol: TunnelFormValues['protocol'],
+  raw?: TunnelProtocolConfig,
+): TunnelProtocolConfig | undefined => {
+  if (!raw) {
+    return undefined
+  }
+
+  const config: TunnelProtocolConfig = {}
+  switch (protocol) {
+    case 'tcp':
+      config.tcp_keepalive = raw.tcp_keepalive
+      config.keepalive_interval = raw.keepalive_interval
+      config.connect_timeout = raw.connect_timeout
+      config.read_timeout = raw.read_timeout
+      break
+    case 'udp':
+      config.buffer_size = raw.buffer_size
+      config.session_timeout = raw.session_timeout
+      break
+    case 'ws':
+    case 'wss':
+      config.ws_path = raw.ws_path?.trim() || undefined
+      config.ping_interval = raw.ping_interval
+      config.max_message_size = raw.max_message_size
+      config.compression = raw.compression
+      break
+    case 'tls':
+      config.tls_version = raw.tls_version
+      config.verify_cert = raw.verify_cert
+      config.sni = raw.sni?.trim() || undefined
+      break
+    case 'quic':
+      config.max_streams = raw.max_streams
+      config.initial_window = raw.initial_window
+      config.idle_timeout = raw.idle_timeout
+      config.enable_0rtt = raw.enable_0rtt
+      break
+    default:
+      return undefined
+  }
+
+  return hasProtocolConfigValue(config) ? config : undefined
 }
 
 const TunnelList = () => {
@@ -83,8 +141,27 @@ const TunnelList = () => {
   const [batchLoading, setBatchLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<string>('list')
   const [form] = Form.useForm<TunnelFormValues>()
+  const previousProtocolRef = useRef<TunnelFormValues['protocol'] | undefined>(undefined)
 
   const protocol = Form.useWatch('protocol', form)
+
+  useEffect(() => {
+    if (!open) {
+      previousProtocolRef.current = undefined
+      return
+    }
+    if (!protocol) {
+      return
+    }
+    if (previousProtocolRef.current === undefined) {
+      previousProtocolRef.current = protocol
+      return
+    }
+    if (previousProtocolRef.current !== protocol) {
+      form.setFieldValue('protocol_config', undefined)
+      previousProtocolRef.current = protocol
+    }
+  }, [form, open, protocol])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -193,12 +270,13 @@ const TunnelList = () => {
   const handleCreate = async (values: TunnelFormValues) => {
     setSubmitting(true)
     try {
+      const protocolConfig = sanitizeProtocolConfig(values.protocol, values.protocol_config)
       const config: TunnelConfig = {
         load_balance_strategy: values.load_balance_strategy,
         ip_type: values.ip_type,
         enable_proxy_protocol: values.enable_proxy_protocol,
         forward_targets: values.forward_targets || [],
-        protocol_config: (values as any).protocol_config || undefined,
+        protocol_config: protocolConfig,
       }
 
       if (entryRequiresExitGroup && !values.exit_group_id) {
@@ -217,7 +295,7 @@ const TunnelList = () => {
           description: values.description?.trim() || undefined,
           protocol: values.protocol,
           entry_group_id: values.entry_group_id,
-          exit_group_id: values.exit_group_id || undefined,
+          exit_group_id: values.exit_group_id ?? 0,
           listen_host: values.listen_host?.trim() || '0.0.0.0',
           listen_port: values.listen_port || undefined,
           remote_host: values.remote_host.trim(),

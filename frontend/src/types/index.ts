@@ -85,6 +85,17 @@ export interface SendEmailChangeCodeResult {
   sent?: boolean
 }
 
+export interface TelegramSSOURLResult {
+  login_url: string
+  expires_at: string
+  expires_in: number
+  redirect_uri?: string
+}
+
+export interface TelegramSSOLoginResult extends LoginResult {
+  redirect_uri?: string
+}
+
 export interface LoginResult {
   token: string
   user: User

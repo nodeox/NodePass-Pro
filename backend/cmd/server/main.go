@@ -237,6 +237,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		middleware.TelegramWebhookAuth(),     // 签名验证
 		telegramHandler.Webhook)
 	api.POST("/telegram/login", middleware.RateLimit(0.5, 5), telegramHandler.Login)
+	api.GET("/telegram/sso-login", middleware.RateLimit(1, 20), telegramHandler.SSOLogin)
 
 	// 节点心跳接口 - 添加严格的速率限制和防重放保护
 	api.POST("/node-instances/heartbeat",
@@ -328,6 +329,8 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		{
 			telegram.POST("/bind", telegramHandler.Bind)
 			telegram.POST("/unbind", telegramHandler.Unbind)
+			telegram.POST("/sso-url", telegramHandler.GenerateSSOURL)
+			telegram.POST("/notify", telegramHandler.NotifySelf)
 		}
 	}
 

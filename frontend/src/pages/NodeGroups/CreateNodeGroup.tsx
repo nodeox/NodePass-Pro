@@ -224,6 +224,10 @@ const CreateNodeGroup = () => {
                   options={[
                     { label: 'TCP', value: 'tcp' },
                     { label: 'UDP', value: 'udp' },
+                    { label: 'WebSocket', value: 'ws' },
+                    { label: 'WebSocket SSL', value: 'wss' },
+                    { label: 'TLS', value: 'tls' },
+                    { label: 'QUIC', value: 'quic' },
                   ]}
                 />
               </Form.Item>

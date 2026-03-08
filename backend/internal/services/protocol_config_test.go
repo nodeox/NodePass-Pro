@@ -9,16 +9,19 @@ import (
 func TestValidateProtocolConfig(t *testing.T) {
 	tests := []struct {
 		name    string
+		proto   string
 		config  *models.ProtocolConfig
 		wantErr bool
 	}{
 		{
 			name:    "nil config should pass",
+			proto:   "tcp",
 			config:  nil,
 			wantErr: false,
 		},
 		{
-			name: "valid TCP config",
+			name:  "valid TCP config",
+			proto: "tcp",
 			config: &models.ProtocolConfig{
 				TCPKeepalive:      boolPtr(true),
 				KeepaliveInterval: intPtr(60),
@@ -28,21 +31,24 @@ func TestValidateProtocolConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid keepalive interval - too small",
+			name:  "invalid keepalive interval - too small",
+			proto: "tcp",
 			config: &models.ProtocolConfig{
 				KeepaliveInterval: intPtr(0),
 			},
 			wantErr: true,
 		},
 		{
-			name: "invalid keepalive interval - too large",
+			name:  "invalid keepalive interval - too large",
+			proto: "tcp",
 			config: &models.ProtocolConfig{
 				KeepaliveInterval: intPtr(301),
 			},
 			wantErr: true,
 		},
 		{
-			name: "valid UDP config",
+			name:  "valid UDP config",
+			proto: "udp",
 			config: &models.ProtocolConfig{
 				BufferSize:     intPtr(8192),
 				SessionTimeout: intPtr(60),
@@ -50,14 +56,16 @@ func TestValidateProtocolConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid buffer size - too small",
+			name:  "invalid buffer size - too small",
+			proto: "udp",
 			config: &models.ProtocolConfig{
 				BufferSize: intPtr(512),
 			},
 			wantErr: true,
 		},
 		{
-			name: "valid WebSocket config",
+			name:  "valid WebSocket config",
+			proto: "ws",
 			config: &models.ProtocolConfig{
 				WSPath:         stringPtr("/ws"),
 				PingInterval:   intPtr(30),
@@ -67,14 +75,16 @@ func TestValidateProtocolConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid ws_path - missing leading slash",
+			name:  "invalid ws_path - missing leading slash",
+			proto: "wss",
 			config: &models.ProtocolConfig{
 				WSPath: stringPtr("ws"),
 			},
 			wantErr: true,
 		},
 		{
-			name: "valid TLS config",
+			name:  "valid TLS config",
+			proto: "tls",
 			config: &models.ProtocolConfig{
 				TLSVersion: stringPtr("tls1.2"),
 				VerifyCert: boolPtr(true),
@@ -83,14 +93,16 @@ func TestValidateProtocolConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid TLS version",
+			name:  "invalid TLS version",
+			proto: "tls",
 			config: &models.ProtocolConfig{
-				TLSVersion: stringPtr("tls1.4"),
+				TLSVersion: stringPtr("tls1.1"),
 			},
 			wantErr: true,
 		},
 		{
-			name: "valid QUIC config",
+			name:  "valid QUIC config",
+			proto: "quic",
 			config: &models.ProtocolConfig{
 				MaxStreams:    intPtr(100),
 				InitialWindow: intPtr(256),
@@ -100,7 +112,8 @@ func TestValidateProtocolConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid max_streams - too large",
+			name:  "invalid max_streams - too large",
+			proto: "quic",
 			config: &models.ProtocolConfig{
 				MaxStreams: intPtr(1001),
 			},
@@ -110,7 +123,7 @@ func TestValidateProtocolConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateProtocolConfig(tt.config)
+			err := validateProtocolConfig(tt.proto, tt.config)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateProtocolConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}

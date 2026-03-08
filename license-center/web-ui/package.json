@@ -1,0 +1,31 @@
+{
+  "name": "license-center-web",
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "@tanstack/react-query": "^5.56.2",
+    "axios": "^1.7.7",
+    "antd": "^5.21.2",
+    "dayjs": "^1.11.13",
+    "recharts": "^2.12.7",
+    "zustand": "^5.0.0",
+    "@ant-design/icons": "^5.5.1",
+    "@ant-design/pro-components": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@types/node": "^22.7.5",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}

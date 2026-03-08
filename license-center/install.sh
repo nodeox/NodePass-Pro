@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ============================================================================
+# NodePass License Center 一键部署脚本 v0.2.0
+# ============================================================================
+
 REPO_URL="${REPO_URL:-https://github.com/nodeox/NodePass-Pro.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/nodepass-license-center}"
@@ -11,28 +15,57 @@ SUDO_CMD=""
 PKG_MANAGER=""
 RUN_DEPLOY_AS_SUDO=false
 
+# 颜色输出
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 usage() {
   cat <<'USAGE'
-NodePass License Center 一键脚本
+NodePass License Center 一键部署脚本 v0.2.0
 
 用法:
-  bash install.sh [--install|--upgrade|--uninstall] [--repo <url>] [--branch <branch>] [--install-dir <dir>] [--project-subdir <name>]
+  bash install.sh [--install|--upgrade|--uninstall] [选项]
 
-参数:
+操作:
   --install                    安装（默认）
-  --upgrade                    升级
-  --uninstall                  卸载
+  --upgrade                    升级到最新版本
+  --uninstall                  完全卸载
+
+选项:
   --repo <url>                 仓库地址（默认: https://github.com/nodeox/NodePass-Pro.git）
   --branch <branch>            分支（默认: main）
-  --install-dir <dir>          克隆目录（默认: /opt/nodepass-license-center）
-  --project-subdir <name>      License Center 子目录（默认: license-center）
+  --install-dir <dir>          安装目录（默认: /opt/nodepass-license-center）
+  --project-subdir <name>      子目录（默认: license-center）
   -h, --help                   显示帮助
+
+示例:
+  # 安装
+  bash install.sh --install
+
+  # 升级
+  bash install.sh --upgrade
+
+  # 卸载
+  bash install.sh --uninstall
+
+  # 自定义安装目录
+  bash install.sh --install --install-dir /data/license-center
+
+远程一键安装:
+  bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
+
+版本: v0.2.0
+功能: 授权管理、域名绑定、监控告警、Webhook 通知
 USAGE
 }
 
-log_info() { echo "[INFO] $*"; }
-log_warn() { echo "[WARN] $*"; }
-log_error() { echo "[ERROR] $*" >&2; }
+log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+log_step() { echo -e "${BLUE}[STEP]${NC} $*"; }
 
 run_root() {
   if [[ -n "$SUDO_CMD" ]]; then
@@ -131,7 +164,32 @@ ensure_docker_service() {
   fi
 }
 
+check_system_requirements() {
+  log_step "检查系统要求..."
+
+  # 检查操作系统
+  local os_type=$(uname -s)
+  log_info "操作系统: $os_type"
+
+  # 检查内存
+  if command -v free >/dev/null 2>&1; then
+    local total_mem=$(free -m | awk '/^Mem:/{print $2}')
+    log_info "总内存: ${total_mem}MB"
+    if [[ $total_mem -lt 1024 ]]; then
+      log_warn "内存不足 1GB，可能影响性能"
+    fi
+  fi
+
+  # 检查磁盘空间
+  local available_space=$(df -BG "$INSTALL_DIR" 2>/dev/null | awk 'NR==2 {print $4}' | sed 's/G//')
+  if [[ -n "$available_space" ]] && [[ $available_space -lt 5 ]]; then
+    log_warn "磁盘空间不足 5GB，可能影响运行"
+  fi
+}
+
 ensure_env() {
+  log_step "检查并安装依赖..."
+
   detect_sudo
   detect_pkg_manager
 
@@ -149,6 +207,8 @@ ensure_env() {
       exit 1
     fi
   fi
+
+  log_info "✓ 依赖检查完成"
 }
 
 parse_args() {
@@ -202,6 +262,8 @@ prepare_install_dir() {
 }
 
 prepare_repo() {
+  log_step "准备代码仓库..."
+
   prepare_install_dir
 
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
@@ -214,6 +276,8 @@ prepare_repo() {
     run_root rm -rf "${INSTALL_DIR}"
     run_root git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${INSTALL_DIR}"
   fi
+
+  log_info "✓ 代码准备完成"
 }
 
 resolve_project_dir() {
@@ -230,6 +294,17 @@ resolve_project_dir() {
   echo ""
 }
 
+backup_config() {
+  local project_dir="$1"
+  local config_file="${project_dir}/configs/config.yaml"
+
+  if [[ -f "$config_file" ]]; then
+    local backup_file="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    log_info "备份配置文件: $backup_file"
+    run_root cp "$config_file" "$backup_file"
+  fi
+}
+
 run_deploy() {
   local project_dir="$1"
 
@@ -238,11 +313,15 @@ run_deploy() {
     exit 1
   fi
 
+  log_step "开始部署服务..."
+
   if [[ "$RUN_DEPLOY_AS_SUDO" == true ]]; then
     (cd "$project_dir" && run_root ./scripts/deploy.sh)
   else
     (cd "$project_dir" && ./scripts/deploy.sh)
   fi
+
+  log_info "✓ 服务部署完成"
 }
 
 run_down() {
@@ -253,11 +332,133 @@ run_down() {
     return
   fi
 
+  log_step "停止服务..."
+
   if [[ "$RUN_DEPLOY_AS_SUDO" == true ]]; then
     (cd "$project_dir" && run_root ./scripts/deploy.sh --down) || true
   else
     (cd "$project_dir" && ./scripts/deploy.sh --down) || true
   fi
+}
+
+check_service_health() {
+  log_step "检查服务健康状态..."
+
+  local max_attempts=30
+  local attempt=0
+
+  while [[ $attempt -lt $max_attempts ]]; do
+    if curl -sf http://127.0.0.1:8090/health >/dev/null 2>&1; then
+      log_info "✓ 服务健康检查通过"
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+
+  log_warn "服务健康检查超时，请手动检查"
+  return 1
+}
+
+show_success_info() {
+  cat <<EOF
+
+${GREEN}╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║  🎉 NodePass License Center 部署成功！                         ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝${NC}
+
+${BLUE}📍 访问地址:${NC}
+  • 健康检查: http://127.0.0.1:8090/health
+  • 管理面板: http://127.0.0.1:8090/console
+  • API 文档: http://127.0.0.1:8090/api/v1
+
+${BLUE}🔐 默认账号:${NC}
+  • 用户名: admin
+  • 密码: ChangeMe123!
+  ${RED}⚠️  请立即修改默认密码！${NC}
+
+${BLUE}📚 功能特性:${NC}
+  • ✅ 授权码管理（生成、吊销、转移）
+  • ✅ 域名绑定（防止多站点共享）
+  • ✅ 套餐管理（版本限制、机器数量）
+  • ✅ 监控告警（实时统计、趋势分析）
+  • ✅ Webhook 通知（事件推送）
+  • ✅ 标签管理（授权码分类）
+  • ✅ 安全增强（限流、签名、IP 白名单）
+
+${BLUE}🔧 常用命令:${NC}
+  • 查看日志: docker compose -f ${INSTALL_DIR}/${PROJECT_SUBDIR}/docker-compose.yml logs -f
+  • 重启服务: docker compose -f ${INSTALL_DIR}/${PROJECT_SUBDIR}/docker-compose.yml restart
+  • 停止服务: docker compose -f ${INSTALL_DIR}/${PROJECT_SUBDIR}/docker-compose.yml down
+  • 升级版本: bash install.sh --upgrade
+
+${BLUE}📖 文档:${NC}
+  • 完整文档: ${INSTALL_DIR}/${PROJECT_SUBDIR}/README.md
+  • 架构说明: ${INSTALL_DIR}/${PROJECT_SUBDIR}/ARCHITECTURE.md
+  • 域名绑定: ${INSTALL_DIR}/${PROJECT_SUBDIR}/docs/DOMAIN_BINDING.md
+
+${BLUE}💡 提示:${NC}
+  • 配置文件: ${INSTALL_DIR}/${PROJECT_SUBDIR}/configs/config.yaml
+  • 修改配置后需重启服务
+  • 建议启用 HTTPS 和防火墙
+
+EOF
+}
+
+show_upgrade_info() {
+  cat <<EOF
+
+${GREEN}╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║  ✨ NodePass License Center 升级成功！                         ║
+║                                                                ║
+╚══════════════════════════════��═════════════════════════════════╝${NC}
+
+${BLUE}📍 访问地址:${NC}
+  • 管理面板: http://127.0.0.1:8090/console
+
+${BLUE}🆕 v0.2.0 新功能:${NC}
+  • ✨ 域名绑定功能（防止授权码多站点共享）
+  • ✨ 完整的 Web 管理界面（React + TypeScript）
+  • ✨ 实时监控仪表盘
+  • ✨ 自动告警系统
+  • ✨ Webhook 事件通知
+  • ✨ 批量操作功能
+  • ✨ 标签管理系统
+
+${BLUE}⚠️  重要提示:${NC}
+  • 配置文件已备份，请检查新配置项
+  • 数据库已自动迁移
+  • 建议查看更新日志了解详细变更
+
+EOF
+}
+
+show_uninstall_info() {
+  cat <<EOF
+
+${GREEN}╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║  ✅ NodePass License Center 已卸载                             ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝${NC}
+
+${YELLOW}已清理:${NC}
+  • 服务容器
+  • 代码文件
+  • 安装目录: ${INSTALL_DIR}
+
+${YELLOW}保留:${NC}
+  • Docker 镜像（可手动删除）
+  • 数据库数据（如使用外部数据库）
+
+${BLUE}完全清理命令:${NC}
+  docker system prune -a
+
+EOF
 }
 
 do_uninstall() {
@@ -271,17 +472,36 @@ do_uninstall() {
   run_down "$project_dir"
 
   run_root rm -rf "${INSTALL_DIR}"
-  log_info "卸载完成"
+
+  show_uninstall_info
 }
 
 main() {
+  echo -e "${BLUE}"
+  cat <<'BANNER'
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║   _   _           _      ____                                  ║
+║  | \ | | ___   __| | ___|  _ \ __ _ ___ ___                   ║
+║  |  \| |/ _ \ / _` |/ _ \ |_) / _` / __/ __|                  ║
+║  | |\  | (_) | (_| |  __/  __/ (_| \__ \__ \                  ║
+║  |_| \_|\___/ \__,_|\___|_|   \__,_|___/___/                  ║
+║                                                                ║
+║              License Center v0.2.0                             ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+BANNER
+  echo -e "${NC}"
+
   parse_args "$@"
-  ensure_env
 
   if [[ "$ACTION" == "uninstall" ]]; then
     do_uninstall
     exit 0
   fi
+
+  check_system_requirements
+  ensure_env
 
   prepare_repo
 
@@ -289,14 +509,23 @@ main() {
   project_dir="$(resolve_project_dir)"
 
   if [[ "$ACTION" == "upgrade" ]]; then
-    log_info "执行升级部署"
+    log_info "执行升级部署..."
+    backup_config "$project_dir"
   else
-    log_info "执行安装部署"
+    log_info "执行全新安装..."
   fi
 
   run_deploy "$project_dir"
-  log_info "完成: http://127.0.0.1:8090/health"
-  log_info "管理面板: http://127.0.0.1:8090/console"
+
+  # 等待服务启动
+  sleep 5
+  check_service_health
+
+  if [[ "$ACTION" == "upgrade" ]]; then
+    show_upgrade_info
+  else
+    show_success_info
+  fi
 }
 
 main "$@"

@@ -13,12 +13,16 @@ import (
 
 // LicenseService 授权服务。
 type LicenseService struct {
-	db *gorm.DB
+	db            *gorm.DB
+	domainService *DomainBindingService
 }
 
 // NewLicenseService 创建授权服务。
-func NewLicenseService(db *gorm.DB) *LicenseService {
-	return &LicenseService{db: db}
+func NewLicenseService(db *gorm.DB, domainService *DomainBindingService) *LicenseService {
+	return &LicenseService{
+		db:            db,
+		domainService: domainService,
+	}
 }
 
 // VerifyVersionInfo 版本信息。
@@ -38,6 +42,8 @@ type VerifyRequest struct {
 	Versions    VerifyVersionInfo `json:"versions"`
 	Branch      string            `json:"branch"`
 	Commit      string            `json:"commit"`
+	Domain      string            `json:"domain"`       // 新增：网站域名
+	SiteURL     string            `json:"site_url"`     // 新增：完整网站地址
 }
 
 // VersionPolicy 授权版本策略。
@@ -118,6 +124,7 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 	req.LicenseKey = strings.TrimSpace(req.LicenseKey)
 	req.MachineID = strings.TrimSpace(req.MachineID)
 	req.Action = strings.TrimSpace(req.Action)
+	req.Domain = strings.TrimSpace(req.Domain)
 	if req.Action == "" {
 		req.Action = "install"
 	}
@@ -150,6 +157,14 @@ func (s *LicenseService) Verify(req *VerifyRequest, ip, ua string) (*VerifyResul
 	if !license.Plan.IsEnabled {
 		_ = s.logVerify(&license, req, ip, ua, "failed", "套餐已禁用")
 		return &VerifyResult{Valid: false, Message: "套餐已禁用"}, nil
+	}
+
+	// 域名验证
+	if s.domainService != nil && req.Domain != "" {
+		if err := s.domainService.VerifyDomain(&license, req.Domain, ip, DefaultDomainBindingConfig); err != nil {
+			_ = s.logVerify(&license, req, ip, ua, "failed", err.Error())
+			return &VerifyResult{Valid: false, Message: err.Error()}, nil
+		}
 	}
 
 	policy := planToVersionPolicy(license.Plan)

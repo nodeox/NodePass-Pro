@@ -128,7 +128,7 @@ export interface ProtocolConfig {
   compression?: boolean
 
   // TLS 配置
-  tls_version?: string // tls1.0, tls1.1, tls1.2, tls1.3
+  tls_version?: string // tls1.2, tls1.3
   verify_cert?: boolean
   sni?: string
 

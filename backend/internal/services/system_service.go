@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -234,6 +235,7 @@ func (s *SystemService) invalidateSystemConfigCache() {
 
 var systemConfigValidators = map[string]func(string) (string, error){
 	"site_name":                      validateSiteName,
+	"site_url":                       normalizeOptionalSiteURL,
 	"register_enabled":               normalizeBooleanConfig,
 	"default_vip_level":              normalizeNonNegativeInteger,
 	"telegram_bot_token":             normalizeOptionalText(1024),
@@ -264,6 +266,21 @@ func validateSiteName(value string) (string, error) {
 		return "", fmt.Errorf("%w: site_name 长度不能超过 100", ErrInvalidParams)
 	}
 	return trimmed, nil
+}
+
+func normalizeOptionalSiteURL(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	if !strings.Contains(trimmed, "://") {
+		trimmed = "https://" + trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("%w: site_url 格式无效", ErrInvalidParams)
+	}
+	return strings.TrimRight(parsed.Scheme+"://"+parsed.Host, "/"), nil
 }
 
 func normalizeBooleanConfig(value string) (string, error) {
