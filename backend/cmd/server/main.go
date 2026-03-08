@@ -202,6 +202,9 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	telegramHandler := handlers.NewTelegramHandler(database.DB)
 	authHandler := handlers.NewAuthHandler(database.DB)
 	userAdminHandler := handlers.NewUserAdminHandler(database.DB)
+	alertHandler := handlers.NewAlertHandler(database.DB)
+	alertRuleHandler := handlers.NewAlertRuleHandler(database.DB)
+	notificationChannelHandler := handlers.NewNotificationChannelHandler(database.DB)
 
 	wsHub := panelws.NewHub()
 	wsHandler := handlers.NewWebSocketHandler(wsHub)
@@ -368,6 +371,41 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			adminAnnouncements.POST("", announcementHandler.Create)
 			adminAnnouncements.PUT("/:id", announcementHandler.Update)
 			adminAnnouncements.DELETE("/:id", announcementHandler.Delete)
+		}
+
+		// 告警管理
+		alerts := adminGroup.Group("/alerts")
+		{
+			alerts.GET("", alertHandler.List)
+			alerts.GET("/firing", alertHandler.GetFiring)
+			alerts.GET("/stats", alertHandler.Stats)
+			alerts.GET("/:id", alertHandler.Get)
+			alerts.POST("/:id/acknowledge", alertHandler.Acknowledge)
+			alerts.POST("/:id/resolve", alertHandler.Resolve)
+			alerts.POST("/:id/silence", alertHandler.Silence)
+		}
+
+		// 告警规则管理
+		alertRules := adminGroup.Group("/alert-rules")
+		{
+			alertRules.POST("", alertRuleHandler.Create)
+			alertRules.GET("", alertRuleHandler.List)
+			alertRules.GET("/:id", alertRuleHandler.Get)
+			alertRules.PUT("/:id", alertRuleHandler.Update)
+			alertRules.DELETE("/:id", alertRuleHandler.Delete)
+			alertRules.POST("/:id/toggle", alertRuleHandler.Toggle)
+		}
+
+		// 通知渠道管理
+		notificationChannels := adminGroup.Group("/notification-channels")
+		{
+			notificationChannels.POST("", notificationChannelHandler.Create)
+			notificationChannels.GET("", notificationChannelHandler.List)
+			notificationChannels.GET("/:id", notificationChannelHandler.Get)
+			notificationChannels.PUT("/:id", notificationChannelHandler.Update)
+			notificationChannels.DELETE("/:id", notificationChannelHandler.Delete)
+			notificationChannels.POST("/:id/toggle", notificationChannelHandler.Toggle)
+			notificationChannels.POST("/:id/test", notificationChannelHandler.Test)
 		}
 
 		adminGroup.GET("/audit-logs", auditHandler.List)

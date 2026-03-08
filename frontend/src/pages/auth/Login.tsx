@@ -36,6 +36,7 @@ const Login = () => {
   const widgetContainerRef = useRef<HTMLDivElement | null>(null)
 
   const login = useAuthStore((state) => state.login)
+  const token = useAuthStore((state) => state.token)
   const isLoading = useAuthStore((state) => state.isLoading)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const user = useAuthStore((state) => state.user)
@@ -46,10 +47,10 @@ const Login = () => {
   )
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && token && user) {
       navigate(getHomePathByRole(user?.role), { replace: true })
     }
-  }, [isAuthenticated, navigate, user?.role])
+  }, [isAuthenticated, navigate, token, user])
 
   const handleSubmit = async (values: LoginFormValues) => {
     try {

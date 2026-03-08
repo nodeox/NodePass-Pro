@@ -14,6 +14,7 @@ import type { User } from '../types'
 // 存储键名
 const AUTH_STORAGE_KEY = 'nodepass-auth'
 const TOKEN_EXPIRY_KEY = 'nodepass-token-expiry'
+const AUTH_ZUSTAND_KEY = 'nodepass-auth-zustand'
 
 // 存储模式
 type StorageMode = 'memory' | 'session' | 'local'
@@ -249,12 +250,22 @@ export const clearAuthStorage = (): void => {
   if (storage) {
     storage.removeItem(AUTH_STORAGE_KEY)
     storage.removeItem(TOKEN_EXPIRY_KEY)
+    storage.removeItem(AUTH_ZUSTAND_KEY)
   }
 
-  // 同时清除 localStorage（兼容旧版本）
+  // 同时清除 sessionStorage/localStorage（兼容旧版本与不同持久化策略）
+  try {
+    sessionStorage.removeItem(AUTH_STORAGE_KEY)
+    sessionStorage.removeItem(TOKEN_EXPIRY_KEY)
+    sessionStorage.removeItem(AUTH_ZUSTAND_KEY)
+  } catch {
+    // 忽略错误
+  }
+
   try {
     localStorage.removeItem('nodepass-auth')
     localStorage.removeItem(TOKEN_EXPIRY_KEY)
+    localStorage.removeItem(AUTH_ZUSTAND_KEY)
   } catch {
     // 忽略错误
   }

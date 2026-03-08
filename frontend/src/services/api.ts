@@ -296,6 +296,11 @@ export const authApi = {
     apiClient
       .post<ApiSuccessResponse<{ token: string }>>('/auth/refresh')
       .then(unwrapData),
+
+  revokeAllTokens: () =>
+    apiClient
+      .post<ApiSuccessResponse<null>>('/auth/revoke-all')
+      .then(unwrapData),
 }
 
 export const trafficApi = {
