@@ -129,7 +129,7 @@ export interface Tunnel {
   exit_group_id?: number | null
   entry_group?: NodeGroup
   exit_group?: NodeGroup
-  protocol: 'tcp' | 'udp' | 'ws' | 'tls'
+  protocol: 'tcp' | 'udp' | 'ws' | 'wss' | 'tls' | 'quic'
   listen_host: string
   listen_port: number
   remote_host: string

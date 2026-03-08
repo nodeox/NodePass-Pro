@@ -22,6 +22,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -44,11 +45,13 @@ import type {
 } from '../../types/nodeGroup'
 import { getErrorMessage } from '../../utils/error'
 import { formatDateTime } from '../../utils/format'
+import ProtocolConfig from './components/ProtocolConfig'
+import ProtocolStats from './components/ProtocolStats'
 
 type TunnelFormValues = {
   name: string
   description?: string
-  protocol: 'tcp' | 'udp' | 'ws' | 'tls'
+  protocol: 'tcp' | 'udp' | 'ws' | 'wss' | 'tls' | 'quic'
   entry_group_id: number
   exit_group_id?: number
   listen_host: string
@@ -78,7 +81,10 @@ const TunnelList = () => {
   const [entryRelations, setEntryRelations] = useState<NodeGroupRelation[]>([])
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [batchLoading, setBatchLoading] = useState<boolean>(false)
+  const [activeTab, setActiveTab] = useState<string>('list')
   const [form] = Form.useForm<TunnelFormValues>()
+
+  const protocol = Form.useWatch('protocol', form)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -445,18 +451,26 @@ const TunnelList = () => {
         </Space>
       }
     >
-      <Table<Tunnel>
-        rowKey="id"
-        size="small"
-        loading={loading}
-        dataSource={list}
-        rowSelection={{
-          selectedRowKeys,
-          onChange: setSelectedRowKeys,
-        }}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-        scroll={{ x: 1220 }}
-        columns={[
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'list',
+            label: '隧道列表',
+            children: (
+              <Table<Tunnel>
+                rowKey="id"
+                size="small"
+                loading={loading}
+                dataSource={list}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: setSelectedRowKeys,
+                }}
+                pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+                scroll={{ x: 1220 }}
+                columns={[
           { title: 'ID', dataIndex: 'id', width: 64, fixed: 'left' },
           {
             title: '名称',
@@ -624,6 +638,15 @@ const TunnelList = () => {
                 </Dropdown>
               </Space>
             ),
+                  },
+                ]}
+              />
+            ),
+          },
+          {
+            key: 'protocol-stats',
+            label: '协议统计',
+            children: <ProtocolStats tunnels={list} />,
           },
         ]}
       />
@@ -660,8 +683,10 @@ const TunnelList = () => {
                 options={[
                   { label: 'TCP', value: 'tcp' },
                   { label: 'UDP', value: 'udp' },
-                  { label: 'WS 加密', value: 'ws' },
+                  { label: 'WebSocket', value: 'ws' },
+                  { label: 'WebSocket SSL', value: 'wss' },
                   { label: 'TLS 加密', value: 'tls' },
+                  { label: 'QUIC', value: 'quic' },
                 ]}
               />
             </Form.Item>
@@ -808,6 +833,8 @@ const TunnelList = () => {
               </Form.List>
             </Card>
           )}
+
+          {protocol && <ProtocolConfig protocol={protocol} form={form} />}
         </Form>
       </Modal>
     </PageContainer>
