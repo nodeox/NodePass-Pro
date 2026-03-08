@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================================
-# License Center 部署脚本 v0.3.0
+# License Center 部署脚本 v0.4.0
 # ============================================================================
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,6 +20,9 @@ ACTION="up"
 BUILD_FLAG="--build"
 ENV_FILE=".env"
 COMPOSE_FILE="docker-compose.yml"
+COMPOSE_FILES=()
+ENABLE_HTTPS_PROXY="${ENABLE_HTTPS_PROXY:-false}"
+HTTPS_COMPOSE_FILE="${HTTPS_COMPOSE_FILE:-docker-compose.https.yml}"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
@@ -28,7 +31,7 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $*"; }
 
 usage() {
   cat <<'USAGE'
-License Center 部署脚本 v0.3.0
+License Center 部署脚本 v0.4.0
 
 用法:
   ./scripts/deploy.sh [选项]
@@ -45,6 +48,8 @@ License Center 部署脚本 v0.3.0
   --no-build        启动时不重新构建镜像
   --build-only      仅构建镜像，不启动
   --pull            拉取最新基础镜像
+  --with-https-proxy 启用 HTTPS 代理编排（叠加 docker-compose.https.yml）
+  --https-file <file> 指定 HTTPS 代理 compose 文件（默认: docker-compose.https.yml）
   -f, --file <file> 指定 docker-compose 文件（默认: docker-compose.yml）
   -h, --help        显示帮助
 
@@ -108,6 +113,14 @@ parse_args() {
         ACTION="pull"
         shift
         ;;
+      --with-https-proxy)
+        ENABLE_HTTPS_PROXY="true"
+        shift
+        ;;
+      --https-file)
+        HTTPS_COMPOSE_FILE="${2:-}"
+        shift 2
+        ;;
       -f|--file)
         COMPOSE_FILE="${2:-}"
         shift 2
@@ -123,6 +136,26 @@ parse_args() {
         ;;
     esac
   done
+}
+
+build_compose_args() {
+  COMPOSE_FILES=("$COMPOSE_FILE")
+  if [[ "${ENABLE_HTTPS_PROXY,,}" == "true" ]]; then
+    if [[ -f "$HTTPS_COMPOSE_FILE" ]]; then
+      COMPOSE_FILES+=("$HTTPS_COMPOSE_FILE")
+    else
+      log_warn "已启用 HTTPS 代理，但未找到 compose 文件: $HTTPS_COMPOSE_FILE"
+    fi
+  fi
+}
+
+run_compose() {
+  local args=(docker compose)
+  local compose_file
+  for compose_file in "${COMPOSE_FILES[@]}"; do
+    args+=(-f "$compose_file")
+  done
+  "${args[@]}" "$@"
 }
 
 check_docker() {
@@ -148,9 +181,16 @@ POSTGRES_DB=nodepass_license
 POSTGRES_PORT=5432
 
 # 应用配置
+APP_BIND=0.0.0.0
 APP_PORT=8090
-BUILD_VERSION=0.3.0
+BUILD_VERSION=main
 GIN_MODE=release
+IMAGE_NAME=ghcr.io/nodeox/license-center
+ENABLE_HTTPS_PROXY=false
+CADDY_DOMAIN=
+CADDY_EMAIL=
+CADDY_HTTP_PORT=80
+CADDY_HTTPS_PORT=443
 EOF
     log_info "已创建 $ENV_FILE，请根据需要修改配置"
   fi
@@ -171,13 +211,13 @@ build_images() {
     log_info "前端未构建，将在 Docker 构建过程中自动构建"
   fi
 
-  docker compose -f "$COMPOSE_FILE" build --no-cache
+  run_compose build --no-cache
   log_info "✓ 镜像构建完成"
 }
 
 pull_images() {
   log_step "拉取基础镜像..."
-  docker compose -f "$COMPOSE_FILE" pull
+  run_compose pull
   log_info "✓ 镜像拉取完成"
 }
 
@@ -185,9 +225,9 @@ start_services() {
   log_step "启动服务..."
 
   if [[ -n "$BUILD_FLAG" ]]; then
-    docker compose -f "$COMPOSE_FILE" up -d --build
+    run_compose up -d --build
   else
-    docker compose -f "$COMPOSE_FILE" up -d
+    run_compose up -d
   fi
 
   log_info "✓ 服务启动完成"
@@ -215,35 +255,35 @@ start_services() {
   done
 
   log_warn "服务健康检查超时，请手动检查日志"
-  docker compose -f "$COMPOSE_FILE" logs --tail=50
+  run_compose logs --tail=50
 }
 
 stop_services() {
   log_step "停止服务..."
-  docker compose -f "$COMPOSE_FILE" down
+  run_compose down
   log_info "✓ 服务已停止"
 }
 
 restart_services() {
   log_step "重启服务..."
-  docker compose -f "$COMPOSE_FILE" restart
+  run_compose restart
   log_info "✓ 服务已重启"
   show_service_info
 }
 
 show_logs() {
-  docker compose -f "$COMPOSE_FILE" logs -f --tail=100
+  run_compose logs -f --tail=100
 }
 
 show_status() {
   log_step "服务状态:"
-  docker compose -f "$COMPOSE_FILE" ps
+  run_compose ps
 
   echo ""
   log_step "容器健康状态:"
-  docker compose -f "$COMPOSE_FILE" ps --format json | \
+  run_compose ps --format json | \
     jq -r '.[] | "\(.Name): \(.State) - \(.Health)"' 2>/dev/null || \
-    docker compose -f "$COMPOSE_FILE" ps
+    run_compose ps
 }
 
 clean_all() {
@@ -256,7 +296,7 @@ clean_all() {
   fi
 
   log_step "清理所有数据..."
-  docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
+  run_compose down -v --remove-orphans
 
   # 清理构建缓存
   if [[ -d "web-ui/dist" ]]; then
@@ -294,13 +334,14 @@ ${BLUE}🔧 常用命令:${NC}
   • 停止服务: ./scripts/deploy.sh --down
 
 ${BLUE}📊 容器状态:${NC}
-$(docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  运行中")
+$(run_compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  运行中")
 
 EOF
 }
 
 main() {
   parse_args "$@"
+  build_compose_args
 
   check_docker
   check_env_file
