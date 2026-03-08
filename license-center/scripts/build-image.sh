@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================================
-# License Center 镜像构建脚本 v0.3.0
+# License Center 镜像构建脚本 v0.4.0
 # ============================================================================
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,8 +16,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 默认参数
-VERSION="${VERSION:-0.3.0}"
-IMAGE_NAME="${IMAGE_NAME:-nodepass/license-center}"
+VERSION="${VERSION:-main}"
+IMAGE_NAME="${IMAGE_NAME:-ghcr.io/nodeox/license-center}"
 REGISTRY="${REGISTRY:-}"
 PLATFORM="${PLATFORM:-linux/amd64}"
 OUTPUT_DIR="${OUTPUT_DIR:-./dist}"
@@ -30,7 +30,7 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $*"; }
 
 usage() {
   cat <<'USAGE'
-License Center 镜像构建脚本 v0.3.0
+License Center 镜像构建脚本 v0.4.0
 
 用法:
   ./scripts/build-image.sh [选项]
@@ -43,8 +43,8 @@ License Center 镜像构建脚本 v0.3.0
   --multi-arch      构建多架构镜像
 
 选项:
-  --version <ver>   镜像版本（默认: 0.3.0）
-  --image <name>    镜像名称（默认: nodepass/license-center）
+  --version <ver>   镜像版本（默认: main）
+  --image <name>    镜像名称（默认: ghcr.io/nodeox/license-center）
   --registry <url>  镜像仓库地址
   --platform <arch> 目标平台（默认: linux/amd64）
   --output <dir>    输出目录（默认: ./dist）
@@ -269,7 +269,7 @@ build_multi_arch() {
 
   log_step "构建多架构镜像..."
   log_info "镜像名称: $full_image"
-  log_info "目���平台: $PLATFORM"
+  log_info "目标平台: $PLATFORM"
 
   # 创建并使用 buildx builder
   if ! docker buildx inspect multiarch-builder >/dev/null 2>&1; then

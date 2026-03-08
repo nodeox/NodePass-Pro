@@ -1,5 +1,7 @@
 # NodePass License Center 部署指南
 
+> 当前文档对应版本：`v0.4.0`（交互式一键部署）
+
 ## 目录
 
 - [快速开始](#快速开始)
@@ -15,12 +17,20 @@
 
 ```bash
 # 远程一键安装
-bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 
 # 或下载后安装
 wget https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh
 chmod +x install.sh
 ./install.sh --install
+
+# 非交互安装（适用于自动化）
+./install.sh --install --non-interactive
+
+# 非交互 + 域名 HTTPS
+./install.sh --install --non-interactive --enable-caddy \
+  --domain license.example.com --cert-email ops@example.com \
+  --admin-username admin --admin-email admin@example.com
 ```
 
 ### 手动部署
@@ -116,8 +126,15 @@ POSTGRES_DB=nodepass_license
 POSTGRES_PORT=5432
 
 # 应用配置
+APP_BIND=0.0.0.0
 APP_PORT=8090
-BUILD_VERSION=0.3.0
+BUILD_VERSION=main
+IMAGE_NAME=ghcr.io/nodeox/license-center
+ENABLE_HTTPS_PROXY=false
+CADDY_DOMAIN=
+CADDY_EMAIL=
+CADDY_HTTP_PORT=80
+CADDY_HTTPS_PORT=443
 GIN_MODE=release
 ```
 
@@ -192,6 +209,7 @@ make exec             # 进入容器 shell
 ./scripts/deploy.sh --restart     # 重启服务
 ./scripts/deploy.sh --logs        # 查看日志
 ./scripts/deploy.sh --status      # 查看状态
+./scripts/deploy.sh --with-https-proxy --logs  # 启用 HTTPS 编排时查看日志
 
 # 高级操作
 ./scripts/deploy.sh --build-only  # 仅构建镜像
@@ -380,7 +398,7 @@ A: 编辑 `configs/config.yaml`，修改数据库连接信息，然后注释掉 
 
 ### Q: 如何启用 HTTPS？
 
-A: 建议使用 Nginx 作为反向代理，配置 SSL 证书。
+A: 可直接使用 `install.sh --enable-caddy --domain <域名>`，脚本会自动生成 Caddy 反代并申请证书；也可继续使用自定义 Nginx 方案。
 
 ### Q: 如何扩展到多节点？
 

@@ -1,5 +1,28 @@
 # NodePass License Center - 完整更新日志
 
+## v0.4.0 (2026-03-08) - 交互式部署与 HTTPS 增强
+
+### 🎉 新增功能
+
+- ✨ **交互式一键部署**：`install.sh` 新增交互向导（安装参数可视化引导）
+- ✨ **环境自动补全**：自动检测端口占用、自动补全管理员密码与 JWT 强密钥
+- ✨ **可选域名 HTTPS**：支持 `--enable-caddy`，自动生成 Caddy 反代与证书配置
+- ✨ **多 compose 叠加**：`scripts/deploy.sh` 支持 `--with-https-proxy` 编排模式
+- ✨ **多架构镜像默认化**：默认镜像切换为 `ghcr.io/nodeox/license-center:main`
+
+### 🔧 改进
+
+- ✅ `.env.example/.env.prod.example` 新增 `APP_BIND`、`IMAGE_NAME` 与 Caddy 相关配置
+- ✅ `docker-compose.prod.yml` 支持 `APP_BIND` 与 GHCR 默认镜像
+- ✅ `docker-compose.yml` 默认 `BUILD_VERSION=main`
+- ✅ 升级提示与部署输出对齐 v0.4.0 能力
+
+### 🐛 修复
+
+- ✅ 修复本地脚本改动未生效问题（镜像模式优先使用本地模板，缺失时回退远程）
+- ✅ 修复 YAML 写入特殊字符导致配置风险（管理员密码/JWT 写入转义）
+- ✅ 修复文档中授权域名配置误导（`BACKEND_LICENSE_DOMAIN` 与 `BACKEND_LICENSE_SITE_URL` 至少其一）
+
 ## v0.3.0 (2026-03-08) - 部署优化版本
 
 ### 🎉 新增功能

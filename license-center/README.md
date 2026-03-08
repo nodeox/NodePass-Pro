@@ -1,21 +1,23 @@
 # NodePass License Center - 增强版
 
-**版本：** v0.3.0 | **发布日期：** 2026-03-08
+**版本：** v0.4.0 | **发布日期：** 2026-03-08
 
 独立授权管理系统（独立仓可部署），用于 NodePass Pro 的授权校验与授权码管理。
 
-## 🎉 v0.3.0 新特性
+## 🎉 v0.4.0 新特性
 
 ### 🐳 Docker 镜像优化
 - **多阶段构建**：前后端一体化构建，镜像体积减小 50%
-- **预构建镜像支持**：支持从 Docker Hub、本地文件、私有仓库部署
+- **预构建镜像支持**：默认使用 GHCR 多架构镜像（`ghcr.io/nodeox/license-center`）
 - **多架构支持**：支持 linux/amd64 和 linux/arm64
 - **镜像管理工具**：完整的镜像构建、保存、加载、推送脚本
 
 ### 🚀 部署增强
-- **5 种部署方式**：源码构建、Docker Hub、本地文件、私有仓库、多架构
+- **交互式一键部署**：安装时可引导填写端口、管理员账号、JWT 等关键配置
+- **自动环境补全**：自动检测 Docker 权限、端口占用并生成强密码/密钥
+- **可选域名 HTTPS**：可启用 Caddy 自动申请证书并反向代理
 - **Makefile 工具**：35+ 快捷命令，覆盖开发、部署、测试全流程
-- **增强的部署脚本**：8 种操作模式，支持健康检查、状态监控
+- **增强的部署脚本**：支持 HTTPS 代理编排叠加（`--with-https-proxy`）
 - **环境变量配置**：灵活的 .env 配置，支持自定义端口和版本
 
 ### 📚 文档完善
@@ -57,7 +59,7 @@
 #### 默认镜像部署（GHCR，推荐）
 ```bash
 # 远程一键安装
-bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 
 # 或下载后安装
 wget https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh
@@ -68,8 +70,13 @@ chmod +x install.sh
 #### 其他部署方式
 ```bash
 # 显式使用镜像模式（与默认一致）
-bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") \
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") \
   --install --use-image
+
+# 非交互一键部署（含域名 HTTPS）
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") \
+  --install --non-interactive --enable-caddy --domain license.example.com --cert-email ops@example.com \
+  --admin-username admin --admin-email admin@example.com
 
 # 切换为源码构建
 bash install.sh --install --build-source
@@ -186,7 +193,7 @@ docker compose -f docker-compose.prod.yml logs -f
 | 方式 | 适用场景 | 部署速度 | 磁盘占用 | 网络要求 |
 |------|---------|---------|---------|---------|
 | 源码构建 | 开发环境 | 慢（10-15分钟） | 大（~2GB） | 高 |
-| 预构建镜像（Docker Hub） | 生产环境 | 快（3-5分钟） | 小（~200MB） | 中 |
+| 预构建镜像（GHCR） | 生产环境 | 快（3-5分钟） | 小（~200MB） | 中 |
 | 预构建镜像（本地文件） | 离线环境 | 快（2-3分钟） | 小（~200MB） | 无 |
 | 预构建镜像（私有仓库） | 企业环境 | 快（2-4分钟） | 小（~200MB） | 低 |
 
@@ -194,7 +201,7 @@ docker compose -f docker-compose.prod.yml logs -f
 
 ```bash
 # 安装
-bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh") --install
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 
 # 升级
 bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --upgrade
@@ -218,7 +225,7 @@ bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/li
 
 ```bash
 docker pull ghcr.io/nodeox/license-center:latest
-docker pull ghcr.io/nodeox/license-center:v0.3.0
+docker pull ghcr.io/nodeox/license-center:main
 ```
 
 ## 配置说明

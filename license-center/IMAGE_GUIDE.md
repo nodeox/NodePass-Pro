@@ -1,441 +1,187 @@
-# Docker 镜像使用指南
+# Docker 镜像使用指南（v0.4.0）
 
 ## 概述
 
-NodePass License Center 支持两种部署方式：
-1. **源码构建** - 从源码构建 Docker 镜像（默认）
-2. **预构建镜像** - 使用预构建的 Docker 镜像（推荐生产环境）
+NodePass License Center 推荐优先使用 GitHub Container Registry（GHCR）预构建多架构镜像：
 
-## 一、构建镜像
+- 镜像仓库：`ghcr.io/nodeox/license-center`
+- 支持架构：`linux/amd64`、`linux/arm64`
+- 推荐标签：`main`（主分支构建）、`latest`（默认分支最新稳定构建）
 
-### 方式一：使用 Makefile
+## 一、快速部署（推荐）
 
-```bash
-# 构建镜像（用于本地测试）
-make build
-
-# 构建并保存为文件
-make build-image
-
-# 构建多架构镜像（需要推送到仓库）
-make multi-arch
-```
-
-### 方式二：使用构建脚本
+### 1. 一键安装（预构建镜像）
 
 ```bash
-# 构建镜像
-./scripts/build-image.sh --build
-
-# 构建并保存为 tar.gz 文件
-./scripts/build-image.sh --save
-
-# 自定义版本和名称
-./scripts/build-image.sh --save --version 0.3.0 --image-name mycompany/license-center
-
-# 构建多架构镜像
-./scripts/build-image.sh --multi-arch \
-  --platform linux/amd64,linux/arm64 \
-  --registry registry.example.com \
-  --push
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") --install
 ```
 
-### 构建输出
-
-构建完成后，镜像文件保存在 `dist/` 目录：
-
-```
-dist/
-├── license-center-0.3.0.tar.gz         # 镜像文件
-└── license-center-0.3.0.tar.gz.sha256  # 校验和文件
-```
-
-## 二、加载镜像
-
-### 从本地文件加载
+### 2. 非交互自动化安装
 
 ```bash
-# 使用构建脚本
-./scripts/build-image.sh --load
-
-# 或使用 Makefile
-make load-image
-
-# 或使用 Docker 命令
-gunzip -c dist/license-center-0.3.0.tar.gz | docker load
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") \
+  --install --non-interactive \
+  --image-name ghcr.io/nodeox/license-center \
+  --image-version main \
+  --admin-username admin --admin-email admin@example.com
 ```
 
-### 从 Docker Hub 拉取
+### 3. 非交互 + 域名 HTTPS
 
 ```bash
-# 拉取指定版本
-docker pull nodepass/license-center:0.3.0
-
-# 拉取最新版本
-docker pull nodepass/license-center:latest
+bash <(curl -fsSL "https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/license-center/install.sh?t=$(date +%s)") \
+  --install --non-interactive --enable-caddy \
+  --domain license.example.com --cert-email ops@example.com \
+  --admin-username admin --admin-email admin@example.com
 ```
 
-### 从私有仓库拉取
+## 二、直接使用镜像
+
+### 1. 拉取 GHCR 镜像
 
 ```bash
-# 登录私有仓库
-docker login registry.example.com
+# 主分支构建（推荐）
+docker pull ghcr.io/nodeox/license-center:main
 
-# 拉取镜像
-docker pull registry.example.com/nodepass/license-center:0.3.0
+# 默认分支最新镜像
+docker pull ghcr.io/nodeox/license-center:latest
 ```
 
-## 三、使用预构建镜像部署
-
-### 方式一：使用 install.sh（推荐）
-
-#### 从 Docker Hub 拉取
+### 2. 查看多架构清单
 
 ```bash
-# 使用预构建镜像安装
-bash install.sh --install --use-image
-
-# 指定版本
-bash install.sh --install --use-image --image-version 0.3.0
+docker manifest inspect ghcr.io/nodeox/license-center:main
 ```
 
-#### 从 URL 下载
+### 3. 使用 docker-compose.prod.yml 启动
 
 ```bash
-# 从 URL 下载镜像文件
-bash install.sh --install --use-image \
-  --image-url https://example.com/license-center-0.3.0.tar.gz
-```
-
-#### 从本地文件
-
-```bash
-# 使用本地镜像文件
-bash install.sh --install --use-image \
-  --image-file /path/to/license-center-0.3.0.tar.gz
-```
-
-#### 从私有仓库
-
-```bash
-# 使用私有仓库镜像
-bash install.sh --install --use-image \
-  --image-name registry.example.com/nodepass/license-center \
-  --image-version 0.3.0
-```
-
-### 方式二：使用 docker-compose.prod.yml
-
-#### 1. 准备配置文件
-
-```bash
-# 复制环境变量模板
 cp .env.prod.example .env
-
-# 编辑配置
-vim .env
 ```
 
-配置示例：
+`.env` 示例：
 
 ```bash
-# 数据库配置
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_secure_password
 POSTGRES_DB=nodepass_license
+POSTGRES_PORT=5432
 
-# 应用配置
+APP_BIND=0.0.0.0
 APP_PORT=8090
-BUILD_VERSION=0.3.0
+BUILD_VERSION=main
+GIN_MODE=release
+IMAGE_NAME=ghcr.io/nodeox/license-center
 
-# 镜像配置
-IMAGE_NAME=nodepass/license-center
-# REGISTRY=registry.example.com  # 如果使用私有仓库
+# 可选 HTTPS 代理
+ENABLE_HTTPS_PROXY=false
+CADDY_DOMAIN=
+CADDY_EMAIL=
+CADDY_HTTP_PORT=80
+CADDY_HTTPS_PORT=443
 ```
 
-#### 2. 启动服务
+启动：
 
 ```bash
-# 使用生产配置启动
 docker compose -f docker-compose.prod.yml up -d
-
-# 查看日志
 docker compose -f docker-compose.prod.yml logs -f
-
-# 查看状态
-docker compose -f docker-compose.prod.yml ps
 ```
 
-### 方式三：直接运行容器
+## 三、离线部署（本地镜像文件）
+
+### 1. 构建并保存镜像
 
 ```bash
-# 运行容器
-docker run -d \
-  --name license-center \
-  -p 8090:8090 \
-  -v $(pwd)/configs/config.yaml:/app/configs/config.yaml:ro \
-  -e TZ=Asia/Shanghai \
-  -e GIN_MODE=release \
-  nodepass/license-center:0.3.0
-
-# 查看日志
-docker logs -f license-center
-
-# 停止容器
-docker stop license-center
+./scripts/build-image.sh --save --version main
 ```
 
-## 四、推送镜像到仓库
+默认输出：
 
-### 推送到 Docker Hub
-
-```bash
-# 登录 Docker Hub
-docker login
-
-# 构建并推送
-./scripts/build-image.sh --push --registry docker.io
-
-# 或使用 Makefile
-make push-image
+```text
+dist/
+├── license-center-main.tar.gz
+└── license-center-main.tar.gz.sha256
 ```
 
-### 推送到私有仓库
+### 2. 在目标机器加载
 
 ```bash
-# 登录私有仓库
-docker login registry.example.com
+./scripts/build-image.sh --load --version main
+# 或
+gunzip -c dist/license-center-main.tar.gz | docker load
+```
 
-# 构建并推送
+### 3. 一键安装时指定本地文件
+
+```bash
+bash install.sh --install --use-image --image-file /path/to/license-center-main.tar.gz
+```
+
+## 四、自定义镜像构建
+
+### 1. 本地构建
+
+```bash
+./scripts/build-image.sh --build --version main
+```
+
+### 2. 推送到私有仓库
+
+```bash
 ./scripts/build-image.sh --push \
   --registry registry.example.com \
-  --image-name mycompany/license-center \
-  --version 0.3.0
+  --image license-center \
+  --version main
 ```
 
-### 推送多架构镜像
+### 3. 构建并推送多架构
 
 ```bash
-# 构建并推送多架构镜像
 ./scripts/build-image.sh --multi-arch \
   --platform linux/amd64,linux/arm64 \
   --registry registry.example.com \
-  --image-name mycompany/license-center \
-  --version 0.3.0
+  --image license-center \
+  --version main
 ```
 
-## 五、镜像管理
+## 五、回滚与版本固定
 
-### 查看镜像
+### 回滚到指定标签
 
 ```bash
-# 查看本地镜像
-docker images nodepass/license-center
-
-# 查看镜像详情
-docker inspect nodepass/license-center:0.3.0
-
-# 查看镜像历史
-docker history nodepass/license-center:0.3.0
+# 例：如果你发布了自定义稳定标签
+BUILD_VERSION=v0.4.0
 ```
 
-### 删除镜像
+然后重启：
 
 ```bash
-# 删除指定版本
-docker rmi nodepass/license-center:0.3.0
-
-# 删除所有版本
-docker rmi $(docker images nodepass/license-center -q)
-
-# 清理未使用的镜像
-docker image prune -a
-```
-
-### 导出/导入镜像
-
-```bash
-# 导出镜像
-docker save nodepass/license-center:0.3.0 | gzip > license-center-0.3.0.tar.gz
-
-# 导入镜像
-gunzip -c license-center-0.3.0.tar.gz | docker load
-
-# 传输到其他服务器
-scp license-center-0.3.0.tar.gz user@server:/tmp/
-ssh user@server "gunzip -c /tmp/license-center-0.3.0.tar.gz | docker load"
-```
-
-## 六、镜像验证
-
-### 验证镜像完整性
-
-```bash
-# 验证 SHA256 校验和
-sha256sum -c dist/license-center-0.3.0.tar.gz.sha256
-
-# 或使用 shasum（macOS）
-shasum -a 256 -c dist/license-center-0.3.0.tar.gz.sha256
-```
-
-### 测试镜像
-
-```bash
-# 运行健康检查
-docker run --rm nodepass/license-center:0.3.0 curl -f http://localhost:8090/health
-
-# 查看版本信息
-docker run --rm nodepass/license-center:0.3.0 /usr/local/bin/license-center --version
-
-# 进入容器检查
-docker run --rm -it nodepass/license-center:0.3.0 /bin/bash
-```
-
-## 七、常见问题
-
-### Q: 如何选择部署方式？
-
-**源码构建：**
-- 适合开发环境
-- 需要修改代码
-- 构建时间较长
-
-**预构建镜像：**
-- 适合生产环境
-- 快速部署
-- 镜像体积小
-- 部署一致性好
-
-### Q: 镜像文件太大怎么办？
-
-```bash
-# 使用压缩
-gzip -9 license-center-0.3.0.tar
-
-# 使用 Docker 导出（自动压缩）
-docker save nodepass/license-center:0.3.0 | gzip -9 > license-center-0.3.0.tar.gz
-
-# 清理构建缓存
-docker builder prune -a
-```
-
-### Q: 如何更新镜像？
-
-```bash
-# 拉取最新镜像
-docker pull nodepass/license-center:latest
-
-# 重启服务
-docker compose -f docker-compose.prod.yml up -d
-
-# 或使用 install.sh 升级
-bash install.sh --upgrade --use-image
-```
-
-### Q: 如何回滚到旧版本？
-
-```bash
-# 修改 .env 文件中的版本号
-BUILD_VERSION=0.2.0
-
-# 重启服务
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-### Q: 多架构镜像如何使用？
+### 生产建议
 
-```bash
-# Docker 会自动选择匹配的架构
-docker pull nodepass/license-center:0.3.0
+- 使用固定标签（例如 `v0.4.0` 或内部发布号），避免长期使用 `latest`
+- 首次部署可用 `main` 验证，稳定后切换到固定版本标签
+- 保留最近 1-2 个可回滚镜像包与校验文件
 
-# 查看镜像支持的架构
-docker manifest inspect nodepass/license-center:0.3.0
-```
+## 六、常见问题
 
-## 八、最佳实践
+### Q: 为什么推荐 GHCR？
 
-### 生产环境建议
+A: 与仓库 Actions 发布流程直接打通，主分支变更可自动生成最新多架构镜像。
 
-1. **使用预构建镜像**
-   ```bash
-   bash install.sh --install --use-image
-   ```
+### Q: 如何确认拉到的是本机架构镜像？
 
-2. **使用固定版本号**
-   ```bash
-   BUILD_VERSION=0.3.0  # 不要使用 latest
-   ```
+A: 使用 `docker manifest inspect` 查看清单，Docker 会自动选择匹配架构。
 
-3. **使用私有仓库**
-   ```bash
-   REGISTRY=registry.example.com
-   IMAGE_NAME=mycompany/license-center
-   ```
+### Q: 开启 HTTPS 一定要自己写 Nginx 吗？
 
-4. **定期备份镜像**
-   ```bash
-   # 定期导出镜像
-   docker save nodepass/license-center:0.3.0 | gzip > backup/license-center-0.3.0.tar.gz
-   ```
+A: 不需要。`install.sh` 已支持 `--enable-caddy` 自动生成反代并申请证书。
 
-5. **验证镜像完整性**
-   ```bash
-   # 使用 SHA256 校验
-   sha256sum -c license-center-0.3.0.tar.gz.sha256
-   ```
+## 七、相关文档
 
-### 开发环境建议
-
-1. **使用源码构建**
-   ```bash
-   make up
-   ```
-
-2. **使用 latest 标签**
-   ```bash
-   docker pull nodepass/license-center:latest
-   ```
-
-3. **频繁更新镜像**
-   ```bash
-   docker compose pull
-   docker compose up -d
-   ```
-
-## 九、镜像信息
-
-### 镜像规格
-
-- **基础镜像：** debian:bookworm-slim
-- **构建方式：** 多阶段构建
-- **镜像大小：** ~200MB（压缩后 ~80MB）
-- **支持架构：** linux/amd64, linux/arm64
-- **运行用户：** appuser (uid=1000)
-- **暴露端口：** 8090
-
-### 镜像标签
-
-- `0.3.0` - 稳定版本
-- `0.3` - 次版本
-- `0` - 主版本
-- `latest` - 最新版本
-
-### 镜像仓库
-
-- **Docker Hub：** `docker.io/nodepass/license-center`
-- **GitHub：** `ghcr.io/nodeox/license-center`
-- **私有仓库：** 根据配置
-
-### 自动同步到 GHCR
-
-仓库工作流 `.github/workflows/license-center-image.yml` 会在以下场景自动构建并推送镜像到 GHCR：
-
-- push 到 `main`（且变更包含 `license-center/**`）
-- push `v*` 标签
-- 手动触发工作流
-
-## 十、技术支持
-
-- **文档：** [README.md](./README.md)
-- **部署指南：** [DEPLOYMENT.md](./DEPLOYMENT.md)
-- **问题反馈：** [GitHub Issues](https://github.com/nodeox/NodePass-Pro/issues)
+- [README.md](./README.md)
+- [DEPLOYMENT.md](./DEPLOYMENT.md)
+- [CHANGELOG.md](./CHANGELOG.md)
