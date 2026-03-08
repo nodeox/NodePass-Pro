@@ -65,7 +65,6 @@ type TelegramConfig struct {
 // LicenseConfig 运行时授权配置。
 type LicenseConfig struct {
 	Enabled               bool   `mapstructure:"enabled"`
-	VerifyURL             string `mapstructure:"verify_url"`
 	LicenseKey            string `mapstructure:"license_key"`
 	MachineID             string `mapstructure:"machine_id"`
 	Domain                string `mapstructure:"domain"`

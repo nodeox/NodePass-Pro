@@ -7,6 +7,13 @@ import (
 	"nodepass-pro/backend/internal/config"
 )
 
+func TestFixedLicenseVerifyURL(t *testing.T) {
+	const expected = "https://key.hahaha.ooo/api/v1/license/verify"
+	if got := fixedLicenseVerifyURL(); got != expected {
+		t.Fatalf("verify url mismatch: got=%q want=%q", got, expected)
+	}
+}
+
 func TestResolveDomainAndSiteURL(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -106,7 +113,6 @@ func TestResolveDomainAndSiteURL(t *testing.T) {
 func TestVerifyRejectsMissingOrLocalDomain(t *testing.T) {
 	manager := NewManager(&config.LicenseConfig{
 		Enabled:    true,
-		VerifyURL:  "https://license.example.com/api/v1/license/verify",
 		LicenseKey: "LIC-TEST",
 	}, &config.ServerConfig{
 		AllowedOrigins: []string{"localhost", "127.0.0.1"},
@@ -139,7 +145,6 @@ func TestVerifyRejectsLocalDomainVariants(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := NewManager(&config.LicenseConfig{
 				Enabled:    true,
-				VerifyURL:  "https://license.example.com/api/v1/license/verify",
 				LicenseKey: "LIC-TEST",
 				Domain:     tc.domain,
 			}, &config.ServerConfig{})
