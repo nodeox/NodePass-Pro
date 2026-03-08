@@ -1,17 +1,19 @@
 # ============================================================================
 # Stage 1: 构建后端
 # ============================================================================
-FROM golang:1.24-bookworm AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.24-bookworm AS go-builder
 
 # 接收构建参数
 ARG BUILD_VERSION=0.3.0
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags "-s -w -X main.appVersion=${BUILD_VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -trimpath \
     -o /usr/local/bin/license-center \
