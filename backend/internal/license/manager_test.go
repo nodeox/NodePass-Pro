@@ -24,6 +24,30 @@ func TestResolveDomainAndSiteURL(t *testing.T) {
 			wantSiteURL: "https://panel.example.com",
 		},
 		{
+			name: "explicit domain should normalize host from url",
+			licenseCfg: config.LicenseConfig{
+				Domain: "https://panel.example.com:8443/path",
+			},
+			wantDomain:  "panel.example.com",
+			wantSiteURL: "https://panel.example.com",
+		},
+		{
+			name: "local domain with port should stay local host",
+			licenseCfg: config.LicenseConfig{
+				Domain: "localhost:3000",
+			},
+			wantDomain:  "localhost",
+			wantSiteURL: "https://localhost",
+		},
+		{
+			name: "local domain url should stay local host",
+			licenseCfg: config.LicenseConfig{
+				Domain: "https://localhost",
+			},
+			wantDomain:  "localhost",
+			wantSiteURL: "https://localhost",
+		},
+		{
 			name: "from site url",
 			licenseCfg: config.LicenseConfig{
 				SiteURL: "https://panel.example.com/path",
@@ -48,9 +72,17 @@ func TestResolveDomainAndSiteURL(t *testing.T) {
 			wantSiteURL: "",
 		},
 		{
-			name: "wildcard origin should not infer domain",
+			name: "wildcard origin with prefix should not infer domain",
 			serverCfg: config.ServerConfig{
 				AllowedOrigins: []string{"*.example.com"},
+			},
+			wantDomain:  "",
+			wantSiteURL: "",
+		},
+		{
+			name: "wildcard origin star should not infer domain",
+			serverCfg: config.ServerConfig{
+				AllowedOrigins: []string{"*"},
 			},
 			wantDomain:  "",
 			wantSiteURL: "",
@@ -90,5 +122,35 @@ func TestVerifyRejectsMissingOrLocalDomain(t *testing.T) {
 	status := manager.Status()
 	if status.Valid {
 		t.Fatalf("status should be invalid when domain is missing")
+	}
+}
+
+func TestVerifyRejectsLocalDomainVariants(t *testing.T) {
+	cases := []struct {
+		name   string
+		domain string
+	}{
+		{name: "localhost with port", domain: "localhost:3000"},
+		{name: "localhost url", domain: "https://localhost"},
+		{name: "loopback ip with port", domain: "127.0.0.1:8080"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := NewManager(&config.LicenseConfig{
+				Enabled:    true,
+				VerifyURL:  "https://license.example.com/api/v1/license/verify",
+				LicenseKey: "LIC-TEST",
+				Domain:     tc.domain,
+			}, &config.ServerConfig{})
+
+			err := manager.verify("runtime")
+			if err == nil {
+				t.Fatalf("expected verify to fail for local domain variant %q", tc.domain)
+			}
+			if !strings.Contains(err.Error(), "license.domain/site_url 未配置或无效") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

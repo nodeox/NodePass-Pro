@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -35,9 +37,10 @@ type Status struct {
 
 // Manager 运行时授权管理器。
 type Manager struct {
-	cfg       config.LicenseConfig
-	client    *http.Client
-	machineID string
+	cfg           config.LicenseConfig
+	client        *http.Client
+	machineID     string
+	serverOrigins []string
 
 	mu     sync.RWMutex
 	status Status
@@ -54,8 +57,10 @@ type verifyRequest struct {
 		Frontend   string `json:"frontend"`
 		Nodeclient string `json:"nodeclient"`
 	} `json:"versions"`
-	Branch string `json:"branch,omitempty"`
-	Commit string `json:"commit,omitempty"`
+	Branch  string `json:"branch,omitempty"`
+	Commit  string `json:"commit,omitempty"`
+	Domain  string `json:"domain,omitempty"`
+	SiteURL string `json:"site_url,omitempty"`
 }
 
 type verifyResponse struct {
@@ -76,7 +81,7 @@ type verifyResponse struct {
 }
 
 // NewManager 创建授权管理器。
-func NewManager(cfg *config.LicenseConfig) *Manager {
+func NewManager(cfg *config.LicenseConfig, serverCfg *config.ServerConfig) *Manager {
 	manager := &Manager{
 		client: &http.Client{Timeout: 10 * time.Second},
 		status: Status{
@@ -91,6 +96,9 @@ func NewManager(cfg *config.LicenseConfig) *Manager {
 
 	manager.cfg = *cfg
 	manager.machineID = detectMachineID(strings.TrimSpace(cfg.MachineID))
+	if serverCfg != nil {
+		manager.serverOrigins = append(manager.serverOrigins, serverCfg.AllowedOrigins...)
+	}
 	manager.status.Enabled = cfg.Enabled
 	manager.status.MachineID = manager.machineID
 	if cfg.Enabled {
@@ -173,6 +181,12 @@ func (m *Manager) verify(action string) error {
 	if hostname == "" {
 		hostname = "nodepass-backend"
 	}
+	domain, siteURL := m.resolveDomainAndSiteURL(hostname)
+	if !isUsableLicenseDomain(domain) {
+		msg := "license.domain/site_url 未配置或无效，请设置可公开访问的生产域名"
+		m.setFailure(now, msg, nil)
+		return fmt.Errorf(msg)
+	}
 
 	reqPayload := verifyRequest{
 		LicenseKey:  strings.TrimSpace(m.cfg.LicenseKey),
@@ -181,6 +195,8 @@ func (m *Manager) verify(action string) error {
 		Action:      action,
 		Branch:      strings.TrimSpace(os.Getenv("APP_GIT_BRANCH")),
 		Commit:      strings.TrimSpace(os.Getenv("APP_GIT_COMMIT")),
+		Domain:      domain,
+		SiteURL:     siteURL,
 	}
 	reqPayload.Versions.Panel = version.Version
 	reqPayload.Versions.Backend = version.Version
@@ -322,4 +338,88 @@ func detectMachineID(configured string) string {
 		return strings.TrimSpace(hostname)
 	}
 	return "unknown-machine"
+}
+
+func (m *Manager) resolveDomainAndSiteURL(hostname string) (string, string) {
+	domain := extractHost(m.cfg.Domain)
+	siteURL := strings.TrimSpace(m.cfg.SiteURL)
+
+	if domain == "" {
+		domain = extractHost(siteURL)
+	}
+	if domain == "" {
+		for _, origin := range m.serverOrigins {
+			host := extractHost(origin)
+			if !isUsableLicenseDomain(host) {
+				continue
+			}
+			domain = host
+			break
+		}
+	}
+
+	if siteURL == "" && domain != "" {
+		siteURL = fmt.Sprintf("https://%s", domain)
+	}
+
+	return domain, siteURL
+}
+
+func extractHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "*.") {
+		return strings.ToLower(raw)
+	}
+
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		return normalizeHost(u.Hostname())
+	}
+
+	host := raw
+	if strings.Contains(host, "/") {
+		host = strings.SplitN(host, "/", 2)[0]
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return normalizeHost(h)
+	}
+	return normalizeHost(host)
+}
+
+func normalizeHost(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func isLocalDomain(host string) bool {
+	host = extractHost(host)
+	if host == "" {
+		return true
+	}
+	if host == "localhost" || host == "::1" || host == "0.0.0.0" {
+		return true
+	}
+	if strings.HasPrefix(host, "127.") {
+		return true
+	}
+	if strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".test") {
+		return true
+	}
+	return false
+}
+
+func isUsableLicenseDomain(host string) bool {
+	host = extractHost(host)
+	if host == "" {
+		return false
+	}
+	if host == "*" || strings.Contains(host, "*") {
+		return false
+	}
+	return !isLocalDomain(host)
 }
