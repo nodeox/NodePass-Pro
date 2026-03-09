@@ -47,8 +47,8 @@ REDIS_DEFAULT_TTL="300"
 
 BACKEND_PORT="8080"
 BACKEND_MODE="release"
-JWT_SECRET=""
-JWT_EXPIRE_TIME="168"
+JWT_SECRET="${JWT_SECRET:-${NODEPASS_JWT_SECRET:-}}"
+JWT_EXPIRE_TIME="${JWT_EXPIRE_TIME:-168}"
 
 BACKEND_CONFIG_FILE_REL="./backend/configs/config.runtime.yaml"
 BACKEND_CONFIG_FILE_ABS=""
@@ -662,6 +662,14 @@ generate_random_secret() {
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
 }
 
+ensure_jwt_secret() {
+  if [[ -n "$JWT_SECRET" ]]; then
+    return
+  fi
+  JWT_SECRET="$(generate_random_secret)"
+  log_warn "未提供 JWT_SECRET，已自动生成随机密钥。后续升级请复用该密钥以避免会话失效。"
+}
+
 prompt_password_with_confirm() {
   local prompt="$1"
   local password=""
@@ -1044,6 +1052,8 @@ invoke_deploy() {
     (cd "$INSTALL_DIR" && run_root env \
       BACKEND_CONFIG_FILE="$backend_config_env" \
       FRONTEND_BIND="$FRONTEND_BIND" \
+      JWT_SECRET="$JWT_SECRET" \
+      JWT_EXPIRE_TIME="$JWT_EXPIRE_TIME" \
       LICENSE_KEY="$LICENSE_KEY" \
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
@@ -1055,6 +1065,8 @@ invoke_deploy() {
     (cd "$INSTALL_DIR" && \
       BACKEND_CONFIG_FILE="$backend_config_env" \
       FRONTEND_BIND="$FRONTEND_BIND" \
+      JWT_SECRET="$JWT_SECRET" \
+      JWT_EXPIRE_TIME="$JWT_EXPIRE_TIME" \
       LICENSE_KEY="$LICENSE_KEY" \
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
@@ -1238,6 +1250,10 @@ main() {
   fi
 
   prepare_repo
+
+  if [[ "$down_mode" != "true" ]]; then
+    ensure_jwt_secret
+  fi
 
   if [[ "$ACTION" == "upgrade" ]]; then
     load_repo_versions "${INSTALL_DIR}"

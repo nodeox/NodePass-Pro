@@ -18,6 +18,8 @@ PANEL_VERSION="${PANEL_VERSION:-}"
 BACKEND_VERSION="${BACKEND_VERSION:-}"
 FRONTEND_VERSION="${FRONTEND_VERSION:-}"
 NODECLIENT_VERSION="${NODECLIENT_VERSION:-}"
+JWT_SECRET="${JWT_SECRET:-${NODEPASS_JWT_SECRET:-}}"
+JWT_EXPIRE_TIME="${JWT_EXPIRE_TIME:-168}"
 LICENSE_KEY="${LICENSE_KEY:-${NODEPASS_LICENSE_KEY:-}}"
 LICENSE_MACHINE_ID="${LICENSE_MACHINE_ID:-}"
 LICENSE_ACTION="${LICENSE_ACTION:-install}"
@@ -121,6 +123,7 @@ NodePass Pro 一键部署脚本
   AUTO_BUILD_NODECLIENT           是否自动构建 nodeclient 下载包（默认: true）
   BACKEND_VERSION                 覆盖后端构建版本（默认读取 backend/VERSION）
   FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
+  JWT_SECRET                      后端 JWT 密钥（必填，建议使用 openssl rand -base64 48 生成）
   LICENSE_KEY                     授权码（可替代 --license-key）
   BACKEND_LICENSE_DOMAIN          运行时授权域名（启用运行时授权时建议设置）
   BACKEND_LICENSE_SITE_URL        运行时授权站点地址（可选）
@@ -391,6 +394,14 @@ verify_license_or_exit() {
   log_info "授权校验通过。license_id=${license_id:-unknown}, plan=${license_plan:-unknown}"
 }
 
+ensure_jwt_secret_or_exit() {
+  if [[ -n "$JWT_SECRET" ]]; then
+    return
+  fi
+  log_error "缺少 JWT_SECRET。请先导出 JWT_SECRET（示例: openssl rand -base64 48）或改用 install.sh 部署。"
+  exit 1
+}
+
 run_compose() {
   BACKEND_CONFIG_FILE="${BACKEND_CONFIG_FILE:-./backend/configs/config.docker.yaml}" \
     FRONTEND_BIND="${FRONTEND_BIND:-127.0.0.1:5173}" \
@@ -398,6 +409,8 @@ run_compose() {
     FRONTEND_VERSION="${FRONTEND_VERSION}" \
     PANEL_VERSION="${PANEL_VERSION}" \
     NODECLIENT_VERSION="${NODECLIENT_VERSION}" \
+    JWT_SECRET="${JWT_SECRET}" \
+    JWT_EXPIRE_TIME="${JWT_EXPIRE_TIME}" \
     LICENSE_KEY="${LICENSE_KEY}" \
     LICENSE_MACHINE_ID="${LICENSE_MACHINE_ID}" \
     BACKEND_LICENSE_ENABLED="${BACKEND_LICENSE_ENABLED}" \
@@ -467,6 +480,7 @@ main() {
     exit 0
   fi
 
+  ensure_jwt_secret_or_exit
   resolve_license_runtime_settings "$sanitized_frontend_domain" "$sanitized_backend_domain"
   verify_license_or_exit
 
