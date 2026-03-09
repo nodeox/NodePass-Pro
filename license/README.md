@@ -182,6 +182,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/lic
   - 绑定域名（可选）
   - 证书邮箱（可选）
   - 部署端口、分支、安装目录
+- 脚本内置环境自检：
+  - 自动安装 Docker / Docker Compose（缺失时）
+  - 自动处理 docker 权限（必要时使用 `sudo docker`）
+  - 自动尝试放行防火墙端口（`ufw` / `firewalld`）
 - 当你填写域名时，会自动启用 Caddy（80/443）并自动申请/续期 HTTPS 证书。
 
 常用可选变量（放在命令前）：

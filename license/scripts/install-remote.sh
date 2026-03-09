@@ -11,8 +11,194 @@ BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME:-admin}"
 BOOTSTRAP_ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
 BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD:-}"
 
+SUDO_BIN=""
+PKG_MANAGER=""
+DOCKER_USE_SUDO=0
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+log_info() {
+  echo "[INFO] $*"
+}
+
+log_warn() {
+  echo "[WARN] $*"
+}
+
+log_error() {
+  echo "[ERROR] $*"
+}
+
 is_tty() {
   [[ -t 0 ]]
+}
+
+init_privilege() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    SUDO_BIN=""
+    return
+  fi
+  if ! command_exists sudo; then
+    log_error "当前用户不是 root 且未安装 sudo，无法自动安装依赖。请先安装 sudo 或切换 root。"
+    exit 1
+  fi
+  SUDO_BIN="sudo"
+}
+
+run_privileged() {
+  if [[ -n "${SUDO_BIN}" ]]; then
+    "${SUDO_BIN}" "$@"
+  else
+    "$@"
+  fi
+}
+
+detect_package_manager() {
+  if command_exists apt-get; then
+    PKG_MANAGER="apt-get"
+  elif command_exists dnf; then
+    PKG_MANAGER="dnf"
+  elif command_exists yum; then
+    PKG_MANAGER="yum"
+  elif command_exists apk; then
+    PKG_MANAGER="apk"
+  else
+    PKG_MANAGER=""
+  fi
+}
+
+install_packages() {
+  local pkgs=("$@")
+  if [[ ${#pkgs[@]} -eq 0 ]]; then
+    return
+  fi
+  if [[ -z "${PKG_MANAGER}" ]]; then
+    log_error "无法识别包管理器，不能自动安装: ${pkgs[*]}"
+    exit 1
+  fi
+
+  log_info "自动安装依赖: ${pkgs[*]}"
+  case "${PKG_MANAGER}" in
+    apt-get)
+      run_privileged apt-get update -y
+      run_privileged apt-get install -y "${pkgs[@]}"
+      ;;
+    dnf)
+      run_privileged dnf install -y "${pkgs[@]}"
+      ;;
+    yum)
+      run_privileged yum install -y "${pkgs[@]}"
+      ;;
+    apk)
+      run_privileged apk add --no-cache "${pkgs[@]}"
+      ;;
+  esac
+}
+
+ensure_base_tools() {
+  local missing=()
+  if ! command_exists git; then
+    missing+=("git")
+  fi
+  if ! command_exists curl && ! command_exists wget; then
+    missing+=("curl")
+  fi
+  if ! command_exists ca-certificates; then
+    # 仅用于部分发行版补证书链，命令不存在时忽略。
+    :
+  fi
+  install_packages "${missing[@]}"
+}
+
+ensure_docker_installed() {
+  if command_exists docker && docker compose version >/dev/null 2>&1; then
+    log_info "检测到 Docker 与 Docker Compose。"
+    return
+  fi
+
+  log_info "未检测到可用 Docker 环境，开始自动安装..."
+  ensure_base_tools
+
+  local install_script="/tmp/get-docker.sh"
+  if command_exists curl; then
+    curl -fsSL https://get.docker.com -o "${install_script}"
+  elif command_exists wget; then
+    wget -qO "${install_script}" https://get.docker.com
+  else
+    log_error "无法下载 Docker 安装脚本（缺少 curl/wget）。"
+    exit 1
+  fi
+
+  run_privileged sh "${install_script}"
+  rm -f "${install_script}"
+
+  if command_exists systemctl; then
+    run_privileged systemctl enable --now docker || true
+  elif command_exists service; then
+    run_privileged service docker start || true
+  fi
+
+  if ! command_exists docker; then
+    log_error "Docker 自动安装后仍不可用，请手动检查。"
+    exit 1
+  fi
+}
+
+prepare_docker_access() {
+  if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_USE_SUDO=0
+    return
+  fi
+  if command_exists sudo && sudo docker info >/dev/null 2>&1 && sudo docker compose version >/dev/null 2>&1; then
+    DOCKER_USE_SUDO=1
+    if [[ -n "${SUDO_BIN}" ]] && ! id -nG "${USER}" | grep -qw docker; then
+      run_privileged usermod -aG docker "${USER}" || true
+      log_warn "已尝试将用户 ${USER} 加入 docker 组；本次脚本继续使用 sudo docker。"
+    fi
+    return
+  fi
+  log_error "Docker 已安装但当前用户无法使用（docker info 失败）。"
+  exit 1
+}
+
+docker_compose() {
+  if [[ "${DOCKER_USE_SUDO}" -eq 1 ]]; then
+    sudo docker compose "$@"
+  else
+    docker compose "$@"
+  fi
+}
+
+configure_firewall_ports() {
+  local ports=("$@")
+  if [[ ${#ports[@]} -eq 0 ]]; then
+    return
+  fi
+
+  if command_exists ufw; then
+    log_info "检测到 ufw，自动放行端口: ${ports[*]}"
+    local p
+    for p in "${ports[@]}"; do
+      run_privileged ufw allow "${p}/tcp" >/dev/null 2>&1 || true
+    done
+    return
+  fi
+
+  if command_exists firewall-cmd; then
+    if ! command_exists systemctl || run_privileged systemctl is-active --quiet firewalld; then
+      log_info "检测到 firewalld，自动放行端口: ${ports[*]}"
+      local p
+      for p in "${ports[@]}"; do
+        run_privileged firewall-cmd --permanent --add-port="${p}/tcp" >/dev/null 2>&1 || true
+      done
+      run_privileged firewall-cmd --reload >/dev/null 2>&1 || true
+      return
+    fi
+  fi
+
+  log_warn "未检测到 ufw/firewalld，未自动配置防火墙。请自行放行端口: ${ports[*]}"
 }
 
 trim() {
@@ -102,17 +288,19 @@ else
   fi
 fi
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "错误：未安装 docker。"
+if ! [[ "${PANEL_PORT}" =~ ^[0-9]+$ ]] || [[ "${PANEL_PORT}" -lt 1 ]] || [[ "${PANEL_PORT}" -gt 65535 ]]; then
+  log_error "面板端口无效: ${PANEL_PORT}"
   exit 1
 fi
 
-if ! docker compose version >/dev/null 2>&1; then
-  echo "错误：未安装 docker compose v2。"
-  exit 1
-fi
+init_privilege
+detect_package_manager
+ensure_base_tools
+ensure_docker_installed
+prepare_docker_access
 
 if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+  log_info "克隆仓库到 ${INSTALL_DIR}"
   git clone "${REPO_URL}" "${INSTALL_DIR}"
 fi
 
@@ -183,8 +371,14 @@ EOF
   compose_args+=(-f docker-compose.domain.yml)
 fi
 
-docker compose "${compose_args[@]}" up -d --build
-docker compose "${compose_args[@]}" ps
+if [[ -n "${PANEL_DOMAIN}" ]]; then
+  configure_firewall_ports 80 443
+else
+  configure_firewall_ports "${PANEL_PORT}"
+fi
+
+docker_compose "${compose_args[@]}" up -d --build
+docker_compose "${compose_args[@]}" ps
 
 echo
 echo "部署完成。"
