@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"nodepass-pro/backend/internal/license"
 	"nodepass-pro/backend/internal/services"
 	"nodepass-pro/backend/internal/utils"
 
@@ -18,8 +19,8 @@ type NodeInstanceHandler struct {
 }
 
 // NewNodeInstanceHandler 创建节点实例处理器。
-func NewNodeInstanceHandler(db *gorm.DB) *NodeInstanceHandler {
-	return &NodeInstanceHandler{service: services.NewNodeInstanceService(db)}
+func NewNodeInstanceHandler(db *gorm.DB, licenseMgr *license.Manager) *NodeInstanceHandler {
+	return &NodeInstanceHandler{service: services.NewNodeInstanceService(db, licenseMgr)}
 }
 
 // Get GET /api/v1/node-instances/:id

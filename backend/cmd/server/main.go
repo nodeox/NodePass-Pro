@@ -193,7 +193,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	api.GET("/license/status", licenseHandler.GetStatus)
 
 	nodeGroupHandler := handlers.NewNodeGroupHandler(database.DB)
-	nodeInstanceHandler := handlers.NewNodeInstanceHandler(database.DB)
+	nodeInstanceHandler := handlers.NewNodeInstanceHandler(database.DB, licenseManager)
 	tunnelHandler := handlers.NewTunnelHandler(database.DB)
 	trafficHandler := handlers.NewTrafficHandler(database.DB)
 	vipHandler := handlers.NewVIPHandler(database.DB)

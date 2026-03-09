@@ -55,3 +55,14 @@ func TestParseHeartbeatResponse_DirectPayloadStillSupported(t *testing.T) {
 		t.Fatalf("期望 version=15，实际=%d", data.NewConfigVersion)
 	}
 }
+
+func TestSetGetClientVersion(t *testing.T) {
+	hb := NewHeartbeatService(&config.Config{
+		HeartbeatInterval: 30,
+	})
+
+	hb.SetClientVersion(" 1.2.3 ")
+	if got := hb.GetClientVersion(); got != "1.2.3" {
+		t.Fatalf("期望 client_version=1.2.3，实际=%q", got)
+	}
+}

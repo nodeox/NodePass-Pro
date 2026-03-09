@@ -1,6 +1,9 @@
 package license
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -11,6 +14,16 @@ func TestFixedLicenseVerifyURL(t *testing.T) {
 	const expected = "https://key.hahaha.ooo/api/v1/license/verify"
 	if got := fixedLicenseVerifyURL(); got != expected {
 		t.Fatalf("verify url mismatch: got=%q want=%q", got, expected)
+	}
+}
+
+func TestResolveVerifyURL(t *testing.T) {
+	custom := "http://127.0.0.1:8091/api/v1/verify"
+	if got := resolveVerifyURL(custom); got != custom {
+		t.Fatalf("resolve verify url mismatch: got=%q want=%q", got, custom)
+	}
+	if got := resolveVerifyURL(""); got != fixedLicenseVerifyURL() {
+		t.Fatalf("resolve verify url fallback mismatch: got=%q want=%q", got, fixedLicenseVerifyURL())
 	}
 }
 
@@ -112,8 +125,9 @@ func TestResolveDomainAndSiteURL(t *testing.T) {
 
 func TestVerifyRejectsMissingOrLocalDomain(t *testing.T) {
 	manager := NewManager(&config.LicenseConfig{
-		Enabled:    true,
-		LicenseKey: "LIC-TEST",
+		Enabled:       true,
+		LicenseKey:    "LIC-TEST",
+		RequireDomain: true,
 	}, &config.ServerConfig{
 		AllowedOrigins: []string{"localhost", "127.0.0.1"},
 	})
@@ -144,9 +158,10 @@ func TestVerifyRejectsLocalDomainVariants(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := NewManager(&config.LicenseConfig{
-				Enabled:    true,
-				LicenseKey: "LIC-TEST",
-				Domain:     tc.domain,
+				Enabled:       true,
+				LicenseKey:    "LIC-TEST",
+				Domain:        tc.domain,
+				RequireDomain: true,
 			}, &config.ServerConfig{})
 
 			err := manager.verify("runtime")
@@ -190,5 +205,101 @@ func TestUpdateDomainRejectsInvalidDomain(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "domain 无效") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestVerifyWithUnifiedResponse(t *testing.T) {
+	var captured verifyRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request failed: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"success": true,
+			"data": {
+				"verified": true,
+				"status": "ok",
+				"license": {
+					"valid": true,
+					"license_id": 12,
+					"plan_code": "NP-STD",
+					"customer": "DemoCorp",
+					"expires_at": "2027-03-01T00:00:00Z",
+					"message": "授权有效"
+				},
+				"version": {
+					"compatible": true,
+					"status": "upgrade_available",
+					"message": "建议升级",
+					"latest_version": "1.2.0"
+				}
+			},
+			"message": "ok"
+		}`))
+	}))
+	defer server.Close()
+
+	manager := NewManager(&config.LicenseConfig{
+		Enabled:       true,
+		LicenseKey:    "NP-TEST-001",
+		VerifyURL:     server.URL,
+		Product:       "backend",
+		Channel:       "stable",
+		ClientVersion: "1.1.0",
+	}, &config.ServerConfig{})
+
+	if err := manager.verify("runtime"); err != nil {
+		t.Fatalf("expected verify success, got err: %v", err)
+	}
+	if captured.Product != "backend" {
+		t.Fatalf("unexpected product: %s", captured.Product)
+	}
+	if captured.Channel != "stable" {
+		t.Fatalf("unexpected channel: %s", captured.Channel)
+	}
+	if captured.ClientVersion != "1.1.0" {
+		t.Fatalf("unexpected client_version: %s", captured.ClientVersion)
+	}
+
+	status := manager.Status()
+	if !status.Valid {
+		t.Fatalf("expected status valid, got invalid: %s", status.Message)
+	}
+	if status.LicenseID != 12 {
+		t.Fatalf("unexpected license_id: %d", status.LicenseID)
+	}
+	if status.Plan != "NP-STD" {
+		t.Fatalf("unexpected plan: %s", status.Plan)
+	}
+	if status.VersionStatus != "upgrade_available" {
+		t.Fatalf("unexpected version_status: %s", status.VersionStatus)
+	}
+}
+
+func TestValidateNodeclientVersion(t *testing.T) {
+	manager := NewManager(&config.LicenseConfig{
+		Enabled: true,
+	}, &config.ServerConfig{})
+	manager.status.MinNodeclient = "1.2.0"
+	manager.status.MaxNodeclient = "2.0.0"
+
+	if err := manager.ValidateNodeclientVersion("1.1.9"); err == nil || !strings.Contains(err.Error(), "版本过低") {
+		t.Fatalf("expected low version error, got: %v", err)
+	}
+
+	if err := manager.ValidateNodeclientVersion("1.2.0"); err != nil {
+		t.Fatalf("expected 1.2.0 to pass, got err: %v", err)
+	}
+
+	if err := manager.ValidateNodeclientVersion("v1.5.3"); err != nil {
+		t.Fatalf("expected v1.5.3 to pass, got err: %v", err)
+	}
+
+	if err := manager.ValidateNodeclientVersion("2.0.1"); err == nil || !strings.Contains(err.Error(), "版本过高") {
+		t.Fatalf("expected high version error, got: %v", err)
 	}
 }

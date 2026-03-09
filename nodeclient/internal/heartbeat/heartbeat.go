@@ -43,6 +43,7 @@ type TrafficData struct {
 type HeartbeatPayload struct {
 	NodeID               string         `json:"node_id"`
 	Token                string         `json:"token"`
+	ClientVersion        string         `json:"client_version,omitempty"`
 	NodeRole             string         `json:"node_role,omitempty"`
 	CurrentConfigVersion int            `json:"current_config_version"`
 	ConnectionAddress    string         `json:"connection_address,omitempty"`
@@ -101,6 +102,7 @@ type HeartbeatService struct {
 	metricsCollector    MetricsCollector
 	configUpdateHandler ConfigUpdateHandler
 	configVersion       int
+	clientVersion       string
 	started             bool
 	resolvedAddress     string
 }
@@ -214,6 +216,26 @@ func (h *HeartbeatService) SetCurrentConfigVersion(version int) {
 	h.mu.Unlock()
 }
 
+// SetClientVersion 设置节点客户端版本号（用于后端版本策略校验）。
+func (h *HeartbeatService) SetClientVersion(version string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.clientVersion = strings.TrimSpace(version)
+	h.mu.Unlock()
+}
+
+// GetClientVersion 获取节点客户端版本号。
+func (h *HeartbeatService) GetClientVersion() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return strings.TrimSpace(h.clientVersion)
+}
+
 // GetCurrentConfigVersion 获取当前已应用配置版本。
 func (h *HeartbeatService) GetCurrentConfigVersion() int {
 	if h == nil {
@@ -269,6 +291,7 @@ func (h *HeartbeatService) Report() error {
 	payload := HeartbeatPayload{
 		NodeID:               h.config.NodeID,
 		Token:                h.config.NodeToken,
+		ClientVersion:        h.GetClientVersion(),
 		NodeRole:             strings.TrimSpace(h.config.NodeRole),
 		CurrentConfigVersion: h.GetCurrentConfigVersion(),
 		ConnectionAddress:    connectionAddress,

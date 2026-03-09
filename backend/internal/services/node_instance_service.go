@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"nodepass-pro/backend/internal/license"
 	"nodepass-pro/backend/internal/models"
 	"nodepass-pro/backend/internal/utils"
 
@@ -15,13 +16,15 @@ import (
 type NodeInstanceService struct {
 	db           *gorm.DB
 	nodeGroupSvc *NodeGroupService
+	licenseMgr   *license.Manager
 }
 
 // NewNodeInstanceService 创建节点实例服务。
-func NewNodeInstanceService(db *gorm.DB) *NodeInstanceService {
+func NewNodeInstanceService(db *gorm.DB, licenseMgr *license.Manager) *NodeInstanceService {
 	return &NodeInstanceService{
 		db:           db,
 		nodeGroupSvc: NewNodeGroupService(db),
+		licenseMgr:   licenseMgr,
 	}
 }
 
@@ -51,8 +54,9 @@ type HeartbeatTrafficStatsPayload struct {
 
 // HeartbeatRequest 节点实例心跳请求。
 type HeartbeatRequest struct {
-	NodeID string `json:"node_id" binding:"required"`
-	Token  string `json:"token" binding:"required"`
+	NodeID        string `json:"node_id" binding:"required"`
+	Token         string `json:"token" binding:"required"`
+	ClientVersion string `json:"client_version" binding:"required"`
 	// CurrentConfigVersion 表示节点当前应用的配置版本（用于差量下发）。
 	CurrentConfigVersion int                           `json:"current_config_version"`
 	ConnectionAddress    *string                       `json:"connection_address"`
@@ -210,6 +214,15 @@ func (s *NodeInstanceService) Heartbeat(req *HeartbeatRequest) (*HeartbeatRespon
 	}
 
 	normalized := normalizeNodeInstanceHeartbeatRequest(req)
+	clientVersion := strings.TrimSpace(normalized.ClientVersion)
+	if clientVersion == "" {
+		return nil, fmt.Errorf("%w: client_version 不能为空", ErrInvalidParams)
+	}
+	if s.licenseMgr != nil {
+		if err := s.licenseMgr.ValidateNodeclientVersion(clientVersion); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrForbidden, err)
+		}
+	}
 
 	instance, err := s.nodeGroupSvc.HandleNodeInstanceHeartbeat(&NodeInstanceHeartbeatRequest{
 		NodeID:            normalized.NodeID,

@@ -39,6 +39,16 @@ type Config struct {
 	// 面板连接
 	HubURL string `json:"hub_url" yaml:"hub_url" mapstructure:"hub_url"`
 
+	// 授权与版本统一校验（可选）
+	LicenseEnabled   bool   `json:"license_enabled,omitempty" yaml:"license_enabled,omitempty" mapstructure:"license_enabled"`
+	LicenseVerifyURL string `json:"license_verify_url,omitempty" yaml:"license_verify_url,omitempty" mapstructure:"license_verify_url"`
+	LicenseKey       string `json:"license_key,omitempty" yaml:"license_key,omitempty" mapstructure:"license_key"`
+	LicenseMachineID string `json:"license_machine_id,omitempty" yaml:"license_machine_id,omitempty" mapstructure:"license_machine_id"`
+	LicenseProduct   string `json:"license_product,omitempty" yaml:"license_product,omitempty" mapstructure:"license_product"`
+	LicenseChannel   string `json:"license_channel,omitempty" yaml:"license_channel,omitempty" mapstructure:"license_channel"`
+	LicenseTimeout   int    `json:"license_timeout,omitempty" yaml:"license_timeout,omitempty" mapstructure:"license_timeout"`
+	LicenseFailOpen  bool   `json:"license_fail_open,omitempty" yaml:"license_fail_open,omitempty" mapstructure:"license_fail_open"`
+
 	// 缓存路径
 	CachePath string `json:"cache_path" yaml:"cache_path" mapstructure:"cache_path"`
 
@@ -83,6 +93,11 @@ func Load(configPath string, overrides CLIOverrides) (*Config, error) {
 	v.SetDefault("heartbeat_interval", 30)
 	v.SetDefault("config_check_interval", 60)
 	v.SetDefault("traffic_report_interval", 60)
+	v.SetDefault("license_enabled", false)
+	v.SetDefault("license_product", "nodeclient")
+	v.SetDefault("license_channel", "stable")
+	v.SetDefault("license_timeout", 10)
+	v.SetDefault("license_fail_open", false)
 
 	if err := v.ReadInConfig(); err != nil {
 		// 配置文件不存在时，仅使用默认值 + CLI 覆盖。
@@ -129,6 +144,15 @@ func Load(configPath string, overrides CLIOverrides) (*Config, error) {
 
 	if strings.TrimSpace(cfg.CachePath) == "" {
 		cfg.CachePath = "/var/lib/nodeclient/config_cache.json"
+	}
+	if strings.TrimSpace(cfg.LicenseProduct) == "" {
+		cfg.LicenseProduct = "nodeclient"
+	}
+	if strings.TrimSpace(cfg.LicenseChannel) == "" {
+		cfg.LicenseChannel = "stable"
+	}
+	if cfg.LicenseTimeout <= 0 {
+		cfg.LicenseTimeout = 10
 	}
 
 	if err := cfg.Validate(); err != nil {

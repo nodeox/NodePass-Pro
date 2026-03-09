@@ -65,6 +65,7 @@ func NewAgent(cfg *config.Config) *Agent {
 	}
 
 	a.heartbeat = heartbeat.NewHeartbeatService(cfg)
+	a.heartbeat.SetClientVersion(Version())
 	a.heartbeat.SetMetricsProvider(a)
 	a.heartbeat.SetMetricsCollector(a.metrics)
 	a.heartbeat.SetConfigUpdateHandler(a.handleHeartbeatConfigUpdate)
