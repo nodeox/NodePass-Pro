@@ -65,6 +65,9 @@ func main() {
 	licenseService := services.NewLicenseService(db, domainBindingService)
 	extensionService := services.NewExtensionService(db, webhookService)
 	monitoringService := services.NewMonitoringService(db, redisCache)
+	licenseTemplateService := services.NewLicenseTemplateService(db)
+	licenseGroupService := services.NewLicenseGroupService(db)
+	licenseEnhancedService := services.NewLicenseEnhancedService(db)
 
 	// 启动时过期清理
 	if affected, expireErr := licenseService.ExpireOverdueLicenses(); expireErr != nil {
@@ -121,6 +124,9 @@ func main() {
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService, alertService)
 	domainBindingHandler := handlers.NewDomainBindingHandler(domainBindingService)
 	versionHandler := handlers.NewVersionHandler(db)
+	licenseTemplateHandler := handlers.NewLicenseTemplateHandler(licenseTemplateService)
+	licenseGroupHandler := handlers.NewLicenseGroupHandler(licenseGroupService)
+	licenseEnhancedHandler := handlers.NewLicenseEnhancedHandler(licenseEnhancedService)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -275,6 +281,41 @@ func main() {
 		admin.GET("/versions/compatibility/:version", versionHandler.CheckCompatibility)
 		admin.GET("/versions/compatibility", versionHandler.ListCompatibilityConfigs)
 		admin.POST("/versions/compatibility", versionHandler.CreateCompatibilityConfig)
+
+		// 授权码模板管理
+		admin.GET("/license-templates", licenseTemplateHandler.ListTemplates)
+		admin.GET("/license-templates/:id", licenseTemplateHandler.GetTemplate)
+		admin.POST("/license-templates", licenseTemplateHandler.CreateTemplate)
+		admin.PUT("/license-templates/:id", licenseTemplateHandler.UpdateTemplate)
+		admin.DELETE("/license-templates/:id", licenseTemplateHandler.DeleteTemplate)
+		admin.POST("/license-templates/generate", licenseTemplateHandler.GenerateFromTemplate)
+		admin.POST("/license-templates/:id/toggle", licenseTemplateHandler.ToggleTemplate)
+
+		// 授权码分组管理
+		admin.GET("/license-groups", licenseGroupHandler.ListGroups)
+		admin.GET("/license-groups/:id", licenseGroupHandler.GetGroup)
+		admin.POST("/license-groups", licenseGroupHandler.CreateGroup)
+		admin.PUT("/license-groups/:id", licenseGroupHandler.UpdateGroup)
+		admin.DELETE("/license-groups/:id", licenseGroupHandler.DeleteGroup)
+		admin.POST("/license-groups/:id/licenses", licenseGroupHandler.AddLicensesToGroup)
+		admin.DELETE("/license-groups/:id/licenses", licenseGroupHandler.RemoveLicensesFromGroup)
+		admin.GET("/license-groups/:id/licenses", licenseGroupHandler.GetGroupLicenses)
+		admin.GET("/license-groups/:id/stats", licenseGroupHandler.GetGroupStats)
+		admin.GET("/licenses/:id/groups", licenseGroupHandler.GetLicenseGroups)
+
+		// 授权码增强功能
+		admin.POST("/licenses/batch/update-enhanced", licenseEnhancedHandler.BatchUpdate)
+		admin.POST("/licenses/batch/transfer", licenseEnhancedHandler.BatchTransfer)
+		admin.POST("/licenses/batch/revoke-enhanced", licenseEnhancedHandler.BatchRevoke)
+		admin.POST("/licenses/batch/restore-enhanced", licenseEnhancedHandler.BatchRestore)
+		admin.POST("/licenses/batch/delete-enhanced", licenseEnhancedHandler.BatchDelete)
+		admin.POST("/licenses/search/advanced", licenseEnhancedHandler.AdvancedSearch)
+		admin.POST("/licenses/search/save", licenseEnhancedHandler.SaveSearch)
+		admin.GET("/licenses/search/saved", licenseEnhancedHandler.ListSavedSearches)
+		admin.GET("/licenses/search/saved/:id", licenseEnhancedHandler.GetSavedSearch)
+		admin.DELETE("/licenses/search/saved/:id", licenseEnhancedHandler.DeleteSavedSearch)
+		admin.GET("/licenses/statistics", licenseEnhancedHandler.GetStatistics)
+		admin.GET("/licenses/expiring", licenseEnhancedHandler.GetExpiringLicenses)
 	}
 
 	srv := &http.Server{
