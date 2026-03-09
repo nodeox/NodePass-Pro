@@ -9,8 +9,8 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -ldflags "-X nodepass-pro/backend/internal/version.Version=${APP_VERSION}" -o /usr/local/bin/nodepass-backend ./cmd/server \
-    && go build -ldflags "-X nodepass-pro/backend/internal/version.Version=${APP_VERSION}" -o /usr/local/bin/nodepass-admin-bootstrap ./cmd/admin-bootstrap
+RUN go build -ldflags "-s -w -X nodepass-pro/backend/internal/version.Version=${APP_VERSION}" -o /usr/local/bin/nodepass-backend ./cmd/server \
+    && go build -ldflags "-s -w -X nodepass-pro/backend/internal/version.Version=${APP_VERSION}" -o /usr/local/bin/nodepass-admin-bootstrap ./cmd/admin-bootstrap
 
 LABEL org.opencontainers.image.version="${APP_VERSION}"
 

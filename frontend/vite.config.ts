@@ -8,4 +8,7 @@ export default defineConfig({
     react(),
     securityHeadersPlugin(),
   ],
+  build: {
+    sourcemap: false,
+  },
 })

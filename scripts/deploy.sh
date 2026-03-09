@@ -13,7 +13,7 @@ DOWN=false
 NO_BUILD=true
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
-AUTO_BUILD_NODECLIENT=true
+AUTO_BUILD_NODECLIENT=false
 PANEL_VERSION="${PANEL_VERSION:-}"
 BACKEND_VERSION="${BACKEND_VERSION:-}"
 FRONTEND_VERSION="${FRONTEND_VERSION:-}"
@@ -109,7 +109,8 @@ NodePass Pro 一键部署脚本
   --caddy-https-port <端口>       Caddy HTTPS 端口，默认 443
   --build-image                   启动时强制本地构建镜像（默认关闭，优先使用预构建镜像）
   --no-build                      兼容参数（当前默认即不构建镜像）
-  --skip-nodeclient-build         跳过 nodeclient 二进制自动构建
+  --build-nodeclient              显式开启 nodeclient 二进制构建（默认关闭）
+  --skip-nodeclient-build         跳过 nodeclient 二进制构建（兼容参数）
   --license-key <授权码>          授权码（非 down 模式必填）
   --machine-id <ID>               指定机器标识（可选，默认自动检测）
   --license-domain <域名>         运行时授权域名（启用运行时授权时建议设置）
@@ -121,7 +122,7 @@ NodePass Pro 一键部署脚本
   BACKEND_CONFIG_FILE             挂载到 backend 容器的配置文件路径
                                   默认: ./backend/configs/config.docker.yaml
   FRONTEND_BIND                   前端绑定地址，默认: 127.0.0.1:5173
-  AUTO_BUILD_NODECLIENT           是否自动构建 nodeclient 下载包（默认: true）
+  AUTO_BUILD_NODECLIENT           是否自动构建 nodeclient 下载包（默认: false）
   BACKEND_VERSION                 覆盖后端构建版本（默认读取 backend/VERSION）
   FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
   JWT_SECRET                      后端 JWT 密钥（必填，建议使用 openssl rand -base64 48 生成）
@@ -134,6 +135,7 @@ NodePass Pro 一键部署脚本
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --license-domain panel.example.com --license-site-url https://panel.example.com
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --email admin@example.com
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
+  ./scripts/deploy.sh --build-nodeclient
   ./scripts/deploy.sh --skip-nodeclient-build
   BACKEND_CONFIG_FILE=./backend/configs/config.runtime.yaml ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com
 EOF
@@ -313,6 +315,10 @@ parse_args() {
         AUTO_BUILD_NODECLIENT=false
         shift
         ;;
+      --build-nodeclient)
+        AUTO_BUILD_NODECLIENT=true
+        shift
+        ;;
       --license-key)
         LICENSE_KEY="${2:-}"
         shift 2
@@ -431,10 +437,14 @@ run_compose() {
 
 build_nodeclient_downloads_if_needed() {
   local build_script="${ROOT_DIR}/scripts/build-nodeclient-downloads.sh"
-  local auto_build="${AUTO_BUILD_NODECLIENT:-true}"
+  local auto_build="${AUTO_BUILD_NODECLIENT:-false}"
   if [[ "${auto_build}" != "true" ]]; then
     log_info "已跳过 nodeclient 构建（AUTO_BUILD_NODECLIENT=false）。"
     return
+  fi
+  if [[ ! -f "${ROOT_DIR}/nodeclient/go.mod" ]]; then
+    log_error "已开启 nodeclient 构建，但当前目录不包含 nodeclient 源码。请改用 --with-source 安装，或移除 --build-nodeclient。"
+    exit 1
   fi
   if [[ ! -x "$build_script" ]]; then
     log_error "未找到可执行构建脚本: $build_script"
