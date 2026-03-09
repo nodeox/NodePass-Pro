@@ -358,10 +358,15 @@ verify_license_or_exit() {
   require_command python3
   local machine_id
   machine_id="$(detect_machine_id)"
+  if [[ -z "$BACKEND_LICENSE_DOMAIN" ]]; then
+    log_error "授权校验需要 domain，请通过 --license-domain（推荐）或 --frontend-domain/--backend-domain 提供。"
+    exit 1
+  fi
 
   log_info "开始授权校验..."
   local verify_output
-  if ! verify_output="$(python3 "$verify_script" \
+  local verify_cmd=(
+    python3 "$verify_script"
     --license-key "$LICENSE_KEY" \
     --machine-id "$machine_id" \
     --action "$LICENSE_ACTION" \
@@ -369,7 +374,13 @@ verify_license_or_exit() {
     --backend-version "$BACKEND_VERSION" \
     --frontend-version "$FRONTEND_VERSION" \
     --nodeclient-version "$NODECLIENT_VERSION" \
-    --timeout 20 2>&1)"; then
+    --domain "$BACKEND_LICENSE_DOMAIN" \
+    --timeout 20
+  )
+  if [[ -n "$BACKEND_LICENSE_SITE_URL" ]]; then
+    verify_cmd+=(--site-url "$BACKEND_LICENSE_SITE_URL")
+  fi
+  if ! verify_output="$("${verify_cmd[@]}" 2>&1)"; then
     log_error "授权校验失败: $verify_output"
     exit 1
   fi
@@ -456,8 +467,8 @@ main() {
     exit 0
   fi
 
-  verify_license_or_exit
   resolve_license_runtime_settings "$sanitized_frontend_domain" "$sanitized_backend_domain"
+  verify_license_or_exit
 
   if [[ -z "${BACKEND_LICENSE_ENABLED}" ]]; then
     if is_usable_license_domain "$BACKEND_LICENSE_DOMAIN"; then

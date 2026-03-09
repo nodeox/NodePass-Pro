@@ -19,6 +19,10 @@ PASSTHROUGH_ARGS=()
 WITH_CADDY=true
 FRONTEND_DOMAIN=""
 BACKEND_DOMAIN=""
+LICENSE_DOMAIN_OVERRIDE=""
+LICENSE_SITE_URL_OVERRIDE=""
+LICENSE_VERIFY_DOMAIN=""
+LICENSE_VERIFY_SITE_URL=""
 CADDY_EMAIL=""
 CADDY_HTTP_PORT="80"
 CADDY_HTTPS_PORT="443"
@@ -100,6 +104,8 @@ NodePass Pro 远程一键部署引导脚本（自动检测环境 + 交互式部�
   --repo <地址>             仓库地址（默认: https://github.com/nodeox/NodePass-Pro.git）
   --branch <分支>           分支名（默认: main）
   --license-key <授权码>    授权码（非交互模式与升级必填，交互安装可在向导中输入）
+  --license-domain <域名>  授权绑定域名（可选，推荐显式提供）
+  --license-site-url <URL> 授权绑定站点地址（可选）
   --machine-id <ID>         指定机器标识（可选，默认自动检测）
   --interactive             强制交互式部署
   --non-interactive         关闭交互，直接透传参数给 scripts/deploy.sh
@@ -228,6 +234,70 @@ contains_passthrough_arg() {
     fi
   done
   return 1
+}
+
+passthrough_arg_value() {
+  local target="$1"
+  local i=0
+  local total=${#PASSTHROUGH_ARGS[@]}
+  while [[ $i -lt $total ]]; do
+    if [[ "${PASSTHROUGH_ARGS[$i]}" == "$target" ]]; then
+      local next=$((i + 1))
+      if [[ $next -lt $total ]]; then
+        echo "${PASSTHROUGH_ARGS[$next]}"
+      fi
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+resolve_license_verify_settings() {
+  local passthrough_license_domain=""
+  local passthrough_license_site_url=""
+  local passthrough_backend_domain=""
+  local passthrough_frontend_domain=""
+  local passthrough_legacy_domain=""
+
+  passthrough_license_domain="$(passthrough_arg_value "--license-domain" || true)"
+  passthrough_license_site_url="$(passthrough_arg_value "--license-site-url" || true)"
+  passthrough_backend_domain="$(passthrough_arg_value "--backend-domain" || true)"
+  passthrough_frontend_domain="$(passthrough_arg_value "--frontend-domain" || true)"
+  passthrough_legacy_domain="$(passthrough_arg_value "--domain" || true)"
+
+  local resolved_domain=""
+  if [[ -n "$LICENSE_DOMAIN_OVERRIDE" ]]; then
+    resolved_domain="$LICENSE_DOMAIN_OVERRIDE"
+  elif [[ -n "$passthrough_license_domain" ]]; then
+    resolved_domain="$passthrough_license_domain"
+  elif [[ -n "$BACKEND_DOMAIN" ]]; then
+    resolved_domain="$BACKEND_DOMAIN"
+  elif [[ -n "$FRONTEND_DOMAIN" ]]; then
+    resolved_domain="$FRONTEND_DOMAIN"
+  elif [[ -n "$passthrough_backend_domain" ]]; then
+    resolved_domain="$passthrough_backend_domain"
+  elif [[ -n "$passthrough_frontend_domain" ]]; then
+    resolved_domain="$passthrough_frontend_domain"
+  elif [[ -n "$passthrough_legacy_domain" ]]; then
+    resolved_domain="$passthrough_legacy_domain"
+  fi
+  resolved_domain="$(sanitize_domain "$resolved_domain")"
+  LICENSE_VERIFY_DOMAIN="$resolved_domain"
+
+  local resolved_site_url=""
+  if [[ -n "$LICENSE_SITE_URL_OVERRIDE" ]]; then
+    resolved_site_url="$LICENSE_SITE_URL_OVERRIDE"
+  elif [[ -n "$passthrough_license_site_url" ]]; then
+    resolved_site_url="$passthrough_license_site_url"
+  elif [[ -n "$resolved_domain" ]]; then
+    if [[ "$WITH_CADDY" == true ]]; then
+      resolved_site_url="https://${resolved_domain}"
+    else
+      resolved_site_url="http://${resolved_domain}"
+    fi
+  fi
+  LICENSE_VERIFY_SITE_URL="$resolved_site_url"
 }
 
 detect_sudo() {
@@ -479,12 +549,19 @@ verify_license_or_exit() {
   fi
 
   require_license_key
+  resolve_license_verify_settings
+  if [[ -z "$LICENSE_VERIFY_DOMAIN" ]]; then
+    log_error "授权校验需要 domain，请通过 --license-domain（推荐）或 --frontend-domain/--backend-domain 提供。"
+    exit 1
+  fi
+
   LICENSE_MACHINE_ID="$(detect_machine_id)"
   load_repo_versions "${INSTALL_DIR}"
 
   log_info "开始授权校验..."
   local verify_output=""
-  if ! verify_output="$(python3 "$verify_script" \
+  local verify_cmd=(
+    python3 "$verify_script"
     --license-key "$LICENSE_KEY" \
     --machine-id "$LICENSE_MACHINE_ID" \
     --action "$ACTION" \
@@ -494,7 +571,13 @@ verify_license_or_exit() {
     --nodeclient-version "$NODECLIENT_VERSION" \
     --branch "$BRANCH" \
     --commit "$REPO_COMMIT" \
-    --timeout 20 2>&1)"; then
+    --domain "$LICENSE_VERIFY_DOMAIN" \
+    --timeout 20
+  )
+  if [[ -n "$LICENSE_VERIFY_SITE_URL" ]]; then
+    verify_cmd+=(--site-url "$LICENSE_VERIFY_SITE_URL")
+  fi
+  if ! verify_output="$("${verify_cmd[@]}" 2>&1)"; then
     log_error "授权校验失败: ${verify_output}"
     exit 1
   fi
@@ -654,6 +737,18 @@ run_interactive_wizard() {
     WITH_CADDY=false
   fi
 
+  if [[ "$WITH_CADDY" != true ]]; then
+    while true; do
+      LICENSE_DOMAIN_OVERRIDE="$(prompt_with_default "授权绑定域名（必填，用于授权校验）" "${LICENSE_DOMAIN_OVERRIDE:-panel.example.com}")"
+      LICENSE_DOMAIN_OVERRIDE="$(sanitize_domain "$LICENSE_DOMAIN_OVERRIDE")"
+      if [[ -n "$LICENSE_DOMAIN_OVERRIDE" ]]; then
+        break
+      fi
+      echo "授权绑定域名不能为空。"
+    done
+    LICENSE_SITE_URL_OVERRIDE="$(prompt_with_default "授权绑定站点地址（可选）" "${LICENSE_SITE_URL_OVERRIDE:-https://${LICENSE_DOMAIN_OVERRIDE}}")"
+  fi
+
   echo ""
   echo "数据库类型:"
   echo "  1) 内置 PostgreSQL（默认，Docker 内置）"
@@ -733,6 +828,7 @@ run_interactive_wizard() {
 }
 
 render_backend_config() {
+  resolve_license_verify_settings
   local db_type=""
   local db_dsn=""
 
@@ -816,6 +912,8 @@ license:
   enabled: true
   license_key: "$(yaml_escape "$LICENSE_KEY")"
   machine_id: "$(yaml_escape "$LICENSE_MACHINE_ID")"
+  domain: "$(yaml_escape "$LICENSE_VERIFY_DOMAIN")"
+  site_url: "$(yaml_escape "$LICENSE_VERIFY_SITE_URL")"
   verify_interval: 300
   fail_open: false
   offline_grace_seconds: 600
@@ -941,6 +1039,7 @@ invoke_deploy() {
   fi
 
   log_info "开始执行部署..."
+  resolve_license_verify_settings
   if [[ "$RUN_DEPLOY_AS_SUDO" == true ]]; then
     (cd "$INSTALL_DIR" && run_root env \
       BACKEND_CONFIG_FILE="$backend_config_env" \
@@ -949,6 +1048,8 @@ invoke_deploy() {
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
       LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
+      BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
       "$deploy_script" "${PASSTHROUGH_ARGS[@]}")
   else
     (cd "$INSTALL_DIR" && \
@@ -958,6 +1059,8 @@ invoke_deploy() {
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
       LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
+      BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
       "$deploy_script" "${PASSTHROUGH_ARGS[@]}")
   fi
 }
@@ -1024,6 +1127,16 @@ parse_args() {
         ;;
       --license-key)
         LICENSE_KEY="${2:-}"
+        shift 2
+        ;;
+      --license-domain)
+        LICENSE_DOMAIN_OVERRIDE="$(sanitize_domain "${2:-}")"
+        PASSTHROUGH_ARGS+=("$1" "${2:-}")
+        shift 2
+        ;;
+      --license-site-url)
+        LICENSE_SITE_URL_OVERRIDE="${2:-}"
+        PASSTHROUGH_ARGS+=("$1" "${2:-}")
         shift 2
         ;;
       --license-server)

@@ -47,6 +47,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nodeclient-version", required=True, help="nodeclient 版本")
     parser.add_argument("--branch", default="", help="仓库分支")
     parser.add_argument("--commit", default="", help="仓库提交")
+    parser.add_argument("--domain", default="", help="授权绑定域名")
+    parser.add_argument("--site-url", default="", help="授权绑定站点地址")
     parser.add_argument("--timeout", type=int, default=20, help="请求超时秒数")
     return parser.parse_args()
 
@@ -138,6 +140,9 @@ def check_version_policy(versions: Versions, policy: dict[str, str]) -> tuple[bo
 
 
 def do_verify(args: argparse.Namespace) -> dict[str, Any]:
+    domain = (args.domain or "").strip()
+    site_url = (args.site_url or "").strip()
+
     payload = {
         "license_key": args.license_key,
         "machine_id": args.machine_id,
@@ -151,6 +156,10 @@ def do_verify(args: argparse.Namespace) -> dict[str, Any]:
         "branch": args.branch,
         "commit": args.commit,
     }
+    if domain:
+        payload["domain"] = domain
+    if site_url:
+        payload["site_url"] = site_url
 
     request = urllib.request.Request(
         fixed_verify_url(),
