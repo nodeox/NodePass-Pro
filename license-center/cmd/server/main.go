@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"nodepass-license-center/internal/cache"
@@ -127,6 +128,11 @@ func main() {
 	licenseTemplateHandler := handlers.NewLicenseTemplateHandler(licenseTemplateService)
 	licenseGroupHandler := handlers.NewLicenseGroupHandler(licenseGroupService)
 	licenseEnhancedHandler := handlers.NewLicenseEnhancedHandler(licenseEnhancedService)
+
+	log.Printf("所有处理器已初始化")
+	log.Printf("licenseTemplateHandler: %v", licenseTemplateHandler != nil)
+	log.Printf("licenseGroupHandler: %v", licenseGroupHandler != nil)
+	log.Printf("licenseEnhancedHandler: %v", licenseEnhancedHandler != nil)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -300,6 +306,7 @@ func main() {
 		admin.DELETE("/license-templates/:id", licenseTemplateHandler.DeleteTemplate)
 		admin.POST("/license-templates/generate", licenseTemplateHandler.GenerateFromTemplate)
 		admin.POST("/license-templates/:id/toggle", licenseTemplateHandler.ToggleTemplate)
+		log.Printf("已注册授权码模板管理路由")
 
 		// 授权码分组管理
 		admin.GET("/license-groups", licenseGroupHandler.ListGroups)
@@ -311,12 +318,22 @@ func main() {
 		admin.DELETE("/license-groups/:id/licenses", licenseGroupHandler.RemoveLicensesFromGroup)
 		admin.GET("/license-groups/:id/licenses", licenseGroupHandler.GetGroupLicenses)
 		admin.GET("/license-groups/:id/stats", licenseGroupHandler.GetGroupStats)
+		log.Printf("已注册授权码分组管理路由")
 
 		// 域名绑定管理
 		admin.POST("/licenses/:id/domain/change", domainBindingHandler.ChangeDomain)
 		admin.POST("/licenses/:id/domain/unbind", domainBindingHandler.UnbindDomain)
 		admin.POST("/licenses/:id/domain/lock", domainBindingHandler.LockDomain)
 		admin.GET("/licenses/:id/domain/history", domainBindingHandler.GetBindingHistory)
+	}
+
+	// 打印所有注册的路由
+	routes := r.Routes()
+	log.Printf("总共注册了 %d 个路由", len(routes))
+	for _, route := range routes {
+		if strings.Contains(route.Path, "license-template") || strings.Contains(route.Path, "license-group") {
+			log.Printf("路由: %s %s", route.Method, route.Path)
+		}
 	}
 
 	srv := &http.Server{
