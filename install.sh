@@ -205,6 +205,17 @@ load_repo_versions() {
   BACKEND_VERSION="$(read_version_file "${target_dir}/backend/VERSION" "$PANEL_VERSION")"
   FRONTEND_VERSION="$(read_version_file "${target_dir}/frontend/VERSION" "$PANEL_VERSION")"
   NODECLIENT_VERSION="$(read_version_file "${target_dir}/nodeclient/VERSION" "$PANEL_VERSION")"
+  if [[ -z "$PANEL_VERSION" || "${PANEL_VERSION,,}" == "dev" ]]; then
+    if [[ -n "$BACKEND_VERSION" && "${BACKEND_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$BACKEND_VERSION"
+    elif [[ -n "$FRONTEND_VERSION" && "${FRONTEND_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$FRONTEND_VERSION"
+    elif [[ -n "$NODECLIENT_VERSION" && "${NODECLIENT_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$NODECLIENT_VERSION"
+    else
+      PANEL_VERSION="0.1.0"
+    fi
+  fi
   if [[ -d "${target_dir}/.git" ]]; then
     REPO_COMMIT="$(git -C "${target_dir}" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
   else

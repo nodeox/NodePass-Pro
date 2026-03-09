@@ -88,6 +88,19 @@ load_versions() {
   if [[ -z "$NODECLIENT_VERSION" ]]; then
     NODECLIENT_VERSION="$(read_version_file "${ROOT_DIR}/nodeclient/VERSION" "$PANEL_VERSION")"
   fi
+
+  # 兜底：避免 panel 版本因 VERSION 缺失退化为 dev，导致授权策略误拦截。
+  if [[ -z "$PANEL_VERSION" || "${PANEL_VERSION,,}" == "dev" ]]; then
+    if [[ -n "$BACKEND_VERSION" && "${BACKEND_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$BACKEND_VERSION"
+    elif [[ -n "$FRONTEND_VERSION" && "${FRONTEND_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$FRONTEND_VERSION"
+    elif [[ -n "$NODECLIENT_VERSION" && "${NODECLIENT_VERSION,,}" != "dev" ]]; then
+      PANEL_VERSION="$NODECLIENT_VERSION"
+    else
+      PANEL_VERSION="0.1.0"
+    fi
+  fi
 }
 
 print_version_summary() {
