@@ -16,6 +16,14 @@ export default defineConfig({
         target: 'http://localhost:8090',
         changeOrigin: true,
       },
+      '/health': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
+      '/console': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+      },
     },
   },
   build: {
