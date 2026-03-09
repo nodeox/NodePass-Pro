@@ -247,11 +247,32 @@ deploy-dev: ## 部署到开发环境
 
 .PHONY: version
 version: ## 显示版本信息
-	@./scripts/version.sh show
+	@cat VERSION
+
+.PHONY: version-check
+version-check: ## 检查版本一致性
+	@./check-version.sh
+
+.PHONY: version-sync
+version-sync: ## 同步所有组件版本
+	@./sync-version.sh
+
+.PHONY: version-info
+version-info: ## 显示详细版本信息
+	@echo "=========================================="
+	@echo "NodePass-Pro 版本信息"
+	@echo "=========================================="
+	@echo ""
+	@echo "根目录版本: $$(cat VERSION)"
+	@echo "后端版本: $$(grep 'var Version' backend/internal/version/version.go | sed 's/.*\"\(.*\)\".*/\1/')"
+	@echo "前端版本: $$(grep '\"version\"' frontend/package.json | head -1 | sed 's/.*: \"\(.*\)\".*/\1/')"
+	@echo "节点客户端版本: $$(grep 'var clientVersion' nodeclient/internal/agent/agent.go | sed 's/.*\"\(.*\)\".*/\1/')"
+	@echo "授权中心版本: $$(grep '\"version\"' license-center/web-ui/package.json | head -1 | sed 's/.*: \"\(.*\)\".*/\1/')"
+	@echo ""
 
 .PHONY: version-bump
 version-bump: ## 升级版本号
-	@./scripts/version.sh bump
+	@./sync-version.sh
 
 .PHONY: license-verify
 license-verify: ## 验证授权

@@ -331,6 +331,24 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			tunnels.POST("/:id/stop", tunnelHandler.Stop)
 		}
 
+		// 隧道模板管理
+		tunnelTemplateHandler := handlers.NewTunnelTemplateHandler(database.DB)
+		tunnelTemplates := authGroup.Group("/tunnel-templates")
+		{
+			tunnelTemplates.POST("", tunnelTemplateHandler.Create)
+			tunnelTemplates.GET("", tunnelTemplateHandler.List)
+			tunnelTemplates.GET("/:id", tunnelTemplateHandler.Get)
+			tunnelTemplates.PUT("/:id", tunnelTemplateHandler.Update)
+			tunnelTemplates.DELETE("/:id", tunnelTemplateHandler.Delete)
+		}
+
+		// 隧道导入导出
+		tunnelImportExportHandler := handlers.NewTunnelImportExportHandler(database.DB)
+		authGroup.POST("/tunnels/export", tunnelImportExportHandler.Export)
+		authGroup.POST("/tunnels/export-all", tunnelImportExportHandler.ExportAll)
+		authGroup.POST("/tunnels/import", tunnelImportExportHandler.Import)
+		authGroup.POST("/tunnels/apply-template", tunnelImportExportHandler.ApplyTemplate)
+
 		traffic := authGroup.Group("/traffic")
 		{
 			traffic.GET("/quota", trafficHandler.GetQuota)

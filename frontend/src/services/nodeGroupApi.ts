@@ -154,4 +154,102 @@ export const tunnelApi = {
     apiClient
       .post<ApiSuccessResponse<Tunnel>>(`/tunnels/${id}/stop`)
       .then(unwrapData),
+
+  export: (payload: { tunnel_ids: number[]; format: 'json' | 'yaml' }) =>
+    apiClient
+      .post<ApiSuccessResponse<{ data: string; format: string }>>('/tunnels/export', payload)
+      .then(unwrapData),
+
+  exportAll: (payload: { format: 'json' | 'yaml' }) =>
+    apiClient
+      .post<ApiSuccessResponse<{ data: string; format: string }>>('/tunnels/export-all', payload)
+      .then(unwrapData),
+
+  import: (payload: {
+    format: 'json' | 'yaml'
+    data: string
+    entry_group_id: number
+    exit_group_id?: number
+    skip_errors: boolean
+  }) =>
+    apiClient
+      .post<ApiSuccessResponse<{
+        total: number
+        success: number
+        failed: number
+        errors?: Array<{ index: number; name: string; message: string }>
+        tunnels: Tunnel[]
+      }>>('/tunnels/import', payload)
+      .then(unwrapData),
+
+  applyTemplate: (payload: {
+    template_id: number
+    name: string
+    description?: string
+    entry_group_id: number
+    exit_group_id?: number
+  }) =>
+    apiClient
+      .post<ApiSuccessResponse<Tunnel>>('/tunnels/apply-template', payload)
+      .then(unwrapData),
+}
+
+export const tunnelTemplateApi = {
+  list: (params?: { protocol?: string; is_public?: boolean; page?: number; page_size?: number }) =>
+    apiClient
+      .get<ApiSuccessResponse<PaginationResult<TunnelTemplate>>>('/tunnel-templates', {
+        params,
+      })
+      .then(unwrapData),
+
+  get: (id: number) =>
+    apiClient.get<ApiSuccessResponse<TunnelTemplate>>(`/tunnel-templates/${id}`).then(unwrapData),
+
+  create: (payload: CreateTunnelTemplatePayload) =>
+    apiClient
+      .post<ApiSuccessResponse<TunnelTemplate>>('/tunnel-templates', payload)
+      .then(unwrapData),
+
+  update: (id: number, payload: Partial<CreateTunnelTemplatePayload>) =>
+    apiClient
+      .put<ApiSuccessResponse<TunnelTemplate>>(`/tunnel-templates/${id}`, payload)
+      .then(unwrapData),
+
+  delete: (id: number) =>
+    apiClient.delete<ApiSuccessResponse<null>>(`/tunnel-templates/${id}`).then(unwrapData),
+}
+
+export interface TunnelTemplate {
+  id: number
+  user_id: number
+  name: string
+  description?: string
+  protocol: string
+  config: TunnelTemplateConfig
+  is_public: boolean
+  usage_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TunnelTemplateConfig {
+  listen_host?: string
+  listen_port?: number
+  remote_host: string
+  remote_port: number
+  load_balance_strategy: string
+  ip_type: string
+  enable_proxy_protocol: boolean
+  forward_targets: Array<{ host: string; port: number; weight: number }>
+  health_check_interval: number
+  health_check_timeout: number
+  protocol_config?: Record<string, unknown>
+}
+
+export interface CreateTunnelTemplatePayload {
+  name: string
+  description?: string
+  protocol: string
+  config: TunnelTemplateConfig
+  is_public: boolean
 }

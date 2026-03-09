@@ -1,13 +1,17 @@
 import {
   CopyOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  ImportOutlined,
   MoreOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SaveOutlined,
 } from '@ant-design/icons'
 import {
   Alert,
@@ -34,7 +38,7 @@ import { useNavigate } from 'react-router-dom'
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { useAuthStore } from '../../store/auth'
-import { nodeGroupApi, tunnelApi } from '../../services/nodeGroupApi'
+import { nodeGroupApi, tunnelApi, tunnelTemplateApi, type TunnelTemplate } from '../../services/nodeGroupApi'
 import type {
   ForwardTarget,
   LoadBalanceStrategy,
@@ -140,6 +144,10 @@ const TunnelList = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [batchLoading, setBatchLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<string>('list')
+  const [exportModalOpen, setExportModalOpen] = useState<boolean>(false)
+  const [importModalOpen, setImportModalOpen] = useState<boolean>(false)
+  const [templateModalOpen, setTemplateModalOpen] = useState<boolean>(false)
+  const [templates, setTemplates] = useState<TunnelTemplate[]>([])
   const [form] = Form.useForm<TunnelFormValues>()
   const previousProtocolRef = useRef<TunnelFormValues['protocol'] | undefined>(undefined)
 
@@ -485,6 +493,191 @@ const TunnelList = () => {
     })
   }
 
+  const handleExport = async (format: 'json' | 'yaml') => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请先选择要导出的隧道')
+      return
+    }
+    try {
+      const result = await tunnelApi.export({
+        tunnel_ids: selectedRowKeys.map(Number),
+        format,
+      })
+      const blob = new Blob([result.data], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `tunnels-export-${Date.now()}.${format}`
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+      setExportModalOpen(false)
+    } catch (error) {
+      message.error(getErrorMessage(error, '导出失败'))
+    }
+  }
+
+  const handleExportAll = async (format: 'json' | 'yaml') => {
+    try {
+      const result = await tunnelApi.exportAll({ format })
+      const blob = new Blob([result.data], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `tunnels-all-${Date.now()}.${format}`
+      a.click()
+      URL.revokeObjectURL(url)
+      message.success('导出成功')
+      setExportModalOpen(false)
+    } catch (error) {
+      message.error(getErrorMessage(error, '导出失败'))
+    }
+  }
+
+  const handleImport = async (values: {
+    format: 'json' | 'yaml'
+    data: string
+    entry_group_id: number
+    exit_group_id?: number
+    skip_errors: boolean
+  }) => {
+    try {
+      const result = await tunnelApi.import(values)
+      message.success(`导入完成：成功 ${result.success} 个，失败 ${result.failed} 个`)
+      if (result.errors && result.errors.length > 0) {
+        Modal.warning({
+          title: '导入错误详情',
+          content: (
+            <div>
+              {result.errors.map((err) => (
+                <div key={err.index}>
+                  {err.index + 1}. {err.name}: {err.message}
+                </div>
+              ))}
+            </div>
+          ),
+        })
+      }
+      setImportModalOpen(false)
+      await loadData()
+    } catch (error) {
+      message.error(getErrorMessage(error, '导入失败'))
+    }
+  }
+
+  const handleSaveAsTemplate = (tunnel: Tunnel) => {
+    Modal.confirm({
+      title: '保存为模板',
+      content: (
+        <Form
+          layout="vertical"
+          onFinish={async (values: { name: string; description?: string; is_public: boolean }) => {
+            try {
+              const config = tunnel.config || {}
+              await tunnelTemplateApi.create({
+                name: values.name,
+                description: values.description,
+                protocol: tunnel.protocol,
+                config: {
+                  listen_host: tunnel.listen_host,
+                  listen_port: tunnel.listen_port || undefined,
+                  remote_host: tunnel.remote_host,
+                  remote_port: tunnel.remote_port,
+                  load_balance_strategy: config.load_balance_strategy || 'round_robin',
+                  ip_type: config.ip_type || 'auto',
+                  enable_proxy_protocol: config.enable_proxy_protocol || false,
+                  forward_targets: config.forward_targets || [],
+                  health_check_interval: config.health_check_interval || 0,
+                  health_check_timeout: config.health_check_timeout || 0,
+                  protocol_config: config.protocol_config,
+                },
+                is_public: values.is_public,
+              })
+              message.success('模板保存成功')
+              Modal.destroyAll()
+            } catch (error) {
+              message.error(getErrorMessage(error, '保存模板失败'))
+            }
+          }}
+        >
+          <Form.Item label="模板名称" name="name" rules={[{ required: true }]} initialValue={`${tunnel.name} 模板`}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item label="公开模板" name="is_public" valuePropName="checked" initialValue={false}>
+            <Checkbox>允许其他用户使用此模板</Checkbox>
+          </Form.Item>
+        </Form>
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      onOk: () => {
+        // Form submit handled in Form.onFinish
+      },
+    })
+  }
+
+  const loadTemplates = async () => {
+    try {
+      const result = await tunnelTemplateApi.list({ page: 1, page_size: 100 })
+      setTemplates(result.items || [])
+    } catch (error) {
+      message.error(getErrorMessage(error, '加载模板失败'))
+    }
+  }
+
+  const handleApplyTemplate = async (template: TunnelTemplate) => {
+    Modal.confirm({
+      title: '应用模板',
+      content: (
+        <Form
+          layout="vertical"
+          onFinish={async (values: {
+            name: string
+            description?: string
+            entry_group_id: number
+            exit_group_id?: number
+          }) => {
+            try {
+              await tunnelApi.applyTemplate({
+                template_id: template.id,
+                name: values.name,
+                description: values.description,
+                entry_group_id: values.entry_group_id,
+                exit_group_id: values.exit_group_id,
+              })
+              message.success('应用模板成功')
+              Modal.destroyAll()
+              await loadData()
+            } catch (error) {
+              message.error(getErrorMessage(error, '应用模板失败'))
+            }
+          }}
+        >
+          <Form.Item label="隧道名称" name="name" rules={[{ required: true }]} initialValue={template.name}>
+            <Input />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item label="入口节点组" name="entry_group_id" rules={[{ required: true }]}>
+            <Select options={entryGroups} placeholder="选择入口节点组" />
+          </Form.Item>
+          <Form.Item label="出口节点组" name="exit_group_id">
+            <Select options={exitGroups} placeholder="可选" allowClear />
+          </Form.Item>
+        </Form>
+      ),
+      okText: '应用',
+      cancelText: '取消',
+      onOk: () => {
+        // Form submit handled in Form.onFinish
+      },
+    })
+  }
+
   return (
     <PageContainer
       title={isAdmin ? '隧道管理' : '我的隧道'}
@@ -528,6 +721,57 @@ const TunnelList = () => {
           <Button icon={<ReloadOutlined />} onClick={() => void loadData()} loading={loading}>
             刷新
           </Button>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'export',
+                  icon: <DownloadOutlined />,
+                  label: '导出选中',
+                  disabled: selectedRowKeys.length === 0,
+                },
+                {
+                  key: 'export-all',
+                  icon: <DownloadOutlined />,
+                  label: '导出全部',
+                },
+                {
+                  key: 'import',
+                  icon: <ImportOutlined />,
+                  label: '导入隧道',
+                },
+                {
+                  type: 'divider',
+                },
+                {
+                  key: 'templates',
+                  icon: <FileTextOutlined />,
+                  label: '模板管理',
+                },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'export') {
+                  setExportModalOpen(true)
+                } else if (key === 'export-all') {
+                  Modal.confirm({
+                    title: '导出全部隧道',
+                    content: '选择导出格式',
+                    okText: 'JSON',
+                    cancelText: 'YAML',
+                    onOk: () => void handleExportAll('json'),
+                    onCancel: () => void handleExportAll('yaml'),
+                  })
+                } else if (key === 'import') {
+                  setImportModalOpen(true)
+                } else if (key === 'templates') {
+                  void loadTemplates()
+                  setTemplateModalOpen(true)
+                }
+              },
+            }}
+          >
+            <Button icon={<MoreOutlined />}>更多操作</Button>
+          </Dropdown>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             创建隧道
           </Button>
@@ -686,6 +930,11 @@ const TunnelList = () => {
                         label: '复制',
                       },
                       {
+                        key: 'save-template',
+                        icon: <SaveOutlined />,
+                        label: '保存为模板',
+                      },
+                      {
                         type: 'divider',
                       },
                       {
@@ -700,6 +949,8 @@ const TunnelList = () => {
                         openEditModal(record)
                       } else if (key === 'copy') {
                         openCopyModal(record)
+                      } else if (key === 'save-template') {
+                        handleSaveAsTemplate(record)
                       } else if (key === 'delete') {
                         Modal.confirm({
                           title: '删除隧道',
@@ -919,6 +1170,122 @@ const TunnelList = () => {
 
           {protocol && <ProtocolConfig protocol={protocol} />}
         </Form>
+      </Modal>
+
+      {/* 导出对话框 */}
+      <Modal
+        title="导出隧道配置"
+        open={exportModalOpen}
+        onCancel={() => setExportModalOpen(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Typography.Text>已选择 {selectedRowKeys.length} 个隧道</Typography.Text>
+          <Button block onClick={() => void handleExport('json')}>
+            导出为 JSON 格式
+          </Button>
+          <Button block onClick={() => void handleExport('yaml')}>
+            导出为 YAML 格式
+          </Button>
+        </Space>
+      </Modal>
+
+      {/* 导入对话框 */}
+      <Modal
+        title="导入隧道配置"
+        open={importModalOpen}
+        onCancel={() => setImportModalOpen(false)}
+        footer={null}
+        width={700}
+      >
+        <Form
+          layout="vertical"
+          onFinish={(values) => void handleImport(values)}
+        >
+          <Form.Item label="导入格式" name="format" rules={[{ required: true }]} initialValue="json">
+            <Select>
+              <Select.Option value="json">JSON</Select.Option>
+              <Select.Option value="yaml">YAML</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="配置数据" name="data" rules={[{ required: true, message: '请输入配置数据' }]}>
+            <Input.TextArea rows={10} placeholder="粘贴导出的配置数据" />
+          </Form.Item>
+          <Form.Item label="入口节点组" name="entry_group_id" rules={[{ required: true }]}>
+            <Select options={entryGroups} placeholder="选择入口节点组" />
+          </Form.Item>
+          <Form.Item label="出口节点组" name="exit_group_id">
+            <Select options={exitGroups} placeholder="可选" allowClear />
+          </Form.Item>
+          <Form.Item label="跳过错误" name="skip_errors" valuePropName="checked" initialValue={true}>
+            <Checkbox>遇到错误时继续导入其他隧道</Checkbox>
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">
+                开始导入
+              </Button>
+              <Button onClick={() => setImportModalOpen(false)}>
+                取消
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 模板管理对话框 */}
+      <Modal
+        title="隧道模板管理"
+        open={templateModalOpen}
+        onCancel={() => setTemplateModalOpen(false)}
+        footer={null}
+        width={900}
+      >
+        <Table
+          size="small"
+          dataSource={templates}
+          rowKey="id"
+          pagination={{ pageSize: 10 }}
+          columns={[
+            { title: 'ID', dataIndex: 'id', width: 60 },
+            { title: '名称', dataIndex: 'name', width: 150 },
+            { title: '协议', dataIndex: 'protocol', width: 80, render: (v: string) => <Tag>{v.toUpperCase()}</Tag> },
+            { title: '描述', dataIndex: 'description', ellipsis: true },
+            {
+              title: '公开',
+              dataIndex: 'is_public',
+              width: 80,
+              render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag>
+            },
+            { title: '使用次数', dataIndex: 'usage_count', width: 100 },
+            {
+              title: '操作',
+              width: 150,
+              render: (_, record) => (
+                <Space size="small">
+                  <Button size="small" type="primary" onClick={() => void handleApplyTemplate(record)}>
+                    应用
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    onClick={async () => {
+                      try {
+                        await tunnelTemplateApi.delete(record.id)
+                        message.success('模板删除成功')
+                        await loadTemplates()
+                      } catch (error) {
+                        message.error(getErrorMessage(error, '删除模板失败'))
+                      }
+                    }}
+                  >
+                    删除
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </Modal>
     </PageContainer>
   )
