@@ -233,10 +233,11 @@ func (m *Manager) verify(action string) error {
 		Domain:      domain,
 		SiteURL:     siteURL,
 	}
-	reqPayload.Versions.Panel = version.Version
-	reqPayload.Versions.Backend = version.Version
-	reqPayload.Versions.Frontend = version.Version
-	reqPayload.Versions.Nodeclient = version.Version
+	runtimeVer := resolveRuntimeVersion()
+	reqPayload.Versions.Panel = runtimeVer
+	reqPayload.Versions.Backend = runtimeVer
+	reqPayload.Versions.Frontend = runtimeVer
+	reqPayload.Versions.Nodeclient = runtimeVer
 
 	body, err := json.Marshal(reqPayload)
 	if err != nil {
@@ -298,6 +299,37 @@ func (m *Manager) verify(action string) error {
 	m.mu.Unlock()
 
 	return nil
+}
+
+func resolveRuntimeVersion() string {
+	compiled := strings.TrimSpace(version.Version)
+	if !isDevLikeVersion(compiled) {
+		return compiled
+	}
+
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("NODEPASS_RUNTIME_VERSION")),
+		strings.TrimSpace(os.Getenv("BACKEND_VERSION")),
+		strings.TrimSpace(os.Getenv("PANEL_VERSION")),
+		strings.TrimSpace(os.Getenv("APP_VERSION")),
+	}
+	for _, candidate := range candidates {
+		if !isDevLikeVersion(candidate) {
+			return candidate
+		}
+	}
+	return "0.1.0"
+}
+
+func isDevLikeVersion(raw string) bool {
+	value := strings.TrimSpace(strings.ToLower(raw))
+	if value == "" {
+		return true
+	}
+	if value == "dev" || value == "devel" || value == "development" {
+		return true
+	}
+	return strings.HasPrefix(value, "dev-")
 }
 
 func (m *Manager) handleVerifyRequestError(now time.Time, requestErr error) {

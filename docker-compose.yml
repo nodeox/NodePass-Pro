@@ -55,6 +55,7 @@ services:
       NODEPASS_LICENSE_VERIFY_INTERVAL: "${BACKEND_LICENSE_VERIFY_INTERVAL:-300}"
       NODEPASS_LICENSE_FAIL_OPEN: "${BACKEND_LICENSE_FAIL_OPEN:-false}"
       NODEPASS_LICENSE_OFFLINE_GRACE_SECONDS: "${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS:-600}"
+      NODEPASS_RUNTIME_VERSION: "${BACKEND_VERSION:-0.1.0}"
     volumes:
       - ${BACKEND_CONFIG_FILE:-./backend/configs/config.docker.yaml}:/app/configs/config.yaml:ro
     restart: unless-stopped
