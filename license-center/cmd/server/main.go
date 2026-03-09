@@ -220,6 +220,21 @@ func main() {
 		// 授权码管理
 		admin.POST("/licenses/generate", licenseHandler.GenerateLicenses)
 		admin.GET("/licenses", licenseHandler.ListLicenses)
+
+		// 授权码增强功能 - 必须在 :id 路由之前注册
+		admin.POST("/licenses/batch/update-enhanced", licenseEnhancedHandler.BatchUpdate)
+		admin.POST("/licenses/batch/transfer", licenseEnhancedHandler.BatchTransfer)
+		admin.POST("/licenses/batch/revoke-enhanced", licenseEnhancedHandler.BatchRevoke)
+		admin.POST("/licenses/batch/restore-enhanced", licenseEnhancedHandler.BatchRestore)
+		admin.POST("/licenses/batch/delete-enhanced", licenseEnhancedHandler.BatchDelete)
+		admin.POST("/licenses/search/advanced", licenseEnhancedHandler.AdvancedSearch)
+		admin.POST("/licenses/search/save", licenseEnhancedHandler.SaveSearch)
+		admin.GET("/licenses/search/saved", licenseEnhancedHandler.ListSavedSearches)
+		admin.GET("/licenses/search/saved/:id", licenseEnhancedHandler.GetSavedSearch)
+		admin.DELETE("/licenses/search/saved/:id", licenseEnhancedHandler.DeleteSavedSearch)
+		admin.GET("/licenses/statistics", licenseEnhancedHandler.GetStatistics)
+		admin.GET("/licenses/expiring", licenseEnhancedHandler.GetExpiringLicenses)
+
 		admin.GET("/licenses/:id", licenseHandler.GetLicense)
 		admin.PUT("/licenses/:id", licenseHandler.UpdateLicense)
 		admin.DELETE("/licenses/:id", licenseHandler.DeleteLicense)
@@ -227,6 +242,7 @@ func main() {
 		admin.POST("/licenses/:id/restore", licenseHandler.RestoreLicense)
 		admin.GET("/licenses/:id/activations", licenseHandler.ListActivations)
 		admin.DELETE("/licenses/:id/activations/:activationId", licenseHandler.UnbindActivation)
+		admin.GET("/licenses/:id/groups", licenseGroupHandler.GetLicenseGroups)
 
 		// 授权码扩展功能
 		admin.POST("/licenses/:id/transfer", extensionHandler.TransferLicense)
@@ -237,12 +253,6 @@ func main() {
 		admin.POST("/licenses/batch/revoke", extensionHandler.BatchRevokeLicenses)
 		admin.POST("/licenses/batch/restore", extensionHandler.BatchRestoreLicenses)
 		admin.POST("/licenses/batch/delete", extensionHandler.BatchDeleteLicenses)
-
-		// 域名绑定管理
-		admin.POST("/licenses/:id/domain/change", domainBindingHandler.ChangeDomain)
-		admin.POST("/licenses/:id/domain/unbind", domainBindingHandler.UnbindDomain)
-		admin.POST("/licenses/:id/domain/lock", domainBindingHandler.LockDomain)
-		admin.GET("/licenses/:id/domain/history", domainBindingHandler.GetBindingHistory)
 
 		// 标签管理
 		admin.GET("/tags", extensionHandler.ListTags)
@@ -301,21 +311,12 @@ func main() {
 		admin.DELETE("/license-groups/:id/licenses", licenseGroupHandler.RemoveLicensesFromGroup)
 		admin.GET("/license-groups/:id/licenses", licenseGroupHandler.GetGroupLicenses)
 		admin.GET("/license-groups/:id/stats", licenseGroupHandler.GetGroupStats)
-		admin.GET("/licenses/:id/groups", licenseGroupHandler.GetLicenseGroups)
 
-		// 授权码增强功能
-		admin.POST("/licenses/batch/update-enhanced", licenseEnhancedHandler.BatchUpdate)
-		admin.POST("/licenses/batch/transfer", licenseEnhancedHandler.BatchTransfer)
-		admin.POST("/licenses/batch/revoke-enhanced", licenseEnhancedHandler.BatchRevoke)
-		admin.POST("/licenses/batch/restore-enhanced", licenseEnhancedHandler.BatchRestore)
-		admin.POST("/licenses/batch/delete-enhanced", licenseEnhancedHandler.BatchDelete)
-		admin.POST("/licenses/search/advanced", licenseEnhancedHandler.AdvancedSearch)
-		admin.POST("/licenses/search/save", licenseEnhancedHandler.SaveSearch)
-		admin.GET("/licenses/search/saved", licenseEnhancedHandler.ListSavedSearches)
-		admin.GET("/licenses/search/saved/:id", licenseEnhancedHandler.GetSavedSearch)
-		admin.DELETE("/licenses/search/saved/:id", licenseEnhancedHandler.DeleteSavedSearch)
-		admin.GET("/licenses/statistics", licenseEnhancedHandler.GetStatistics)
-		admin.GET("/licenses/expiring", licenseEnhancedHandler.GetExpiringLicenses)
+		// 域名绑定管理
+		admin.POST("/licenses/:id/domain/change", domainBindingHandler.ChangeDomain)
+		admin.POST("/licenses/:id/domain/unbind", domainBindingHandler.UnbindDomain)
+		admin.POST("/licenses/:id/domain/lock", domainBindingHandler.LockDomain)
+		admin.GET("/licenses/:id/domain/history", domainBindingHandler.GetBindingHistory)
 	}
 
 	srv := &http.Server{
