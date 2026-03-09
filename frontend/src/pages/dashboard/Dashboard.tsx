@@ -1,7 +1,7 @@
 import { message } from 'antd'
 import axios from 'axios'
 import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../components/charts/EChartsCore'
 import dayjs from 'dayjs'
 import { Card, Col, List, Progress, Row, Segmented, Skeleton, Space, Statistic, Tag, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'

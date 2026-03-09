@@ -34,8 +34,8 @@ vi.mock('../../hooks/usePageTitle', () => ({
   usePageTitle: vi.fn(),
 }))
 
-// Mock echarts-for-react
-vi.mock('echarts-for-react', () => ({
+// Mock 图表组件
+vi.mock('../../components/charts/EChartsCore', () => ({
   default: () => <div data-testid="echarts">Chart</div>,
 }))
 

@@ -10,5 +10,16 @@ export default defineConfig({
   ],
   build: {
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/')
+          if (normalizedId.includes('/node_modules/.pnpm/zrender@') || normalizedId.includes('/node_modules/zrender/')) {
+            return 'vendor-zrender'
+          }
+          return undefined
+        },
+      },
+    },
   },
 })

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Row, Col, Statistic, Space, Typography } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, LinkOutlined, ClusterOutlined } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../../components/charts/EChartsCore'
 import dayjs from 'dayjs'
 import type { NodeGroup } from '../../../types/nodeGroup'
 import { formatBytes } from '../../../utils/format'

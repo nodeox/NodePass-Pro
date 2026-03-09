@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../components/charts/EChartsCore'
 import dayjs from 'dayjs'
 import {
   Card,

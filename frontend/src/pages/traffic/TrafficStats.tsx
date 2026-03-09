@@ -19,7 +19,7 @@ import {
   message,
 } from 'antd'
 import type { EChartsOption } from 'echarts'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../components/charts/EChartsCore'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 

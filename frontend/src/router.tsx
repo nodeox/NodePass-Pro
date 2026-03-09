@@ -1,37 +1,38 @@
 /* eslint-disable react-refresh/only-export-components */
 import { Spin } from 'antd'
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect, type ReactNode } from 'react'
 import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom'
 
-import MainLayout from './components/Layout/MainLayout'
-import Login from './pages/auth/Login'
-import Register from './pages/auth/Register'
-import TelegramCallback from './pages/auth/TelegramCallback'
-import ForgotPassword from './pages/auth/ForgotPassword'
-import BenefitCodeManage from './pages/benefit-codes/BenefitCodeManage'
-import RedeemCode from './pages/benefit-codes/RedeemCode'
-import Dashboard from './pages/dashboard/Dashboard'
-import UserDashboard from './pages/dashboard/UserDashboard'
-import CreateNodeGroupPage from './pages/NodeGroups/CreateNodeGroup'
-import DeployNodePage from './pages/NodeGroups/DeployNode'
-import EditNodeGroupPage from './pages/NodeGroups/EditNodeGroup'
-import NodeGroupDetailPage from './pages/NodeGroups/NodeGroupDetail'
-import NodeGroupsPage from './pages/NodeGroups'
-import MyNodes from './pages/nodes/MyNodes'
-import NodeStatus from './pages/nodes/NodeStatus'
-import Profile from './pages/profile/Profile'
-import Announcements from './pages/system/Announcements'
-import AuditLogs from './pages/system/AuditLogs'
-import SystemConfig from './pages/system/SystemConfig'
-import UserManage from './pages/system/UserManage'
-import UserDetail from './pages/system/UserDetail'
-import TunnelDetail from './pages/tunnels/TunnelDetail'
-import TunnelList from './pages/tunnels/TunnelList'
-import TrafficStats from './pages/traffic/TrafficStats'
-import VipCenter from './pages/vip/VipCenter'
-import VipLevelManage from './pages/vip/VipLevelManage'
 import { useAuthStore } from './store/auth'
 import { getHomePathByRole } from './utils/route'
+
+const MainLayout = lazy(() => import('./components/Layout/MainLayout'))
+const Login = lazy(() => import('./pages/auth/Login'))
+const Register = lazy(() => import('./pages/auth/Register'))
+const TelegramCallback = lazy(() => import('./pages/auth/TelegramCallback'))
+const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'))
+const BenefitCodeManage = lazy(() => import('./pages/benefit-codes/BenefitCodeManage'))
+const RedeemCode = lazy(() => import('./pages/benefit-codes/RedeemCode'))
+const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'))
+const UserDashboard = lazy(() => import('./pages/dashboard/UserDashboard'))
+const CreateNodeGroupPage = lazy(() => import('./pages/NodeGroups/CreateNodeGroup'))
+const DeployNodePage = lazy(() => import('./pages/NodeGroups/DeployNode'))
+const EditNodeGroupPage = lazy(() => import('./pages/NodeGroups/EditNodeGroup'))
+const NodeGroupDetailPage = lazy(() => import('./pages/NodeGroups/NodeGroupDetail'))
+const NodeGroupsPage = lazy(() => import('./pages/NodeGroups'))
+const MyNodes = lazy(() => import('./pages/nodes/MyNodes'))
+const NodeStatus = lazy(() => import('./pages/nodes/NodeStatus'))
+const Profile = lazy(() => import('./pages/profile/Profile'))
+const Announcements = lazy(() => import('./pages/system/Announcements'))
+const AuditLogs = lazy(() => import('./pages/system/AuditLogs'))
+const SystemConfig = lazy(() => import('./pages/system/SystemConfig'))
+const UserManage = lazy(() => import('./pages/system/UserManage'))
+const UserDetail = lazy(() => import('./pages/system/UserDetail'))
+const TunnelDetail = lazy(() => import('./pages/tunnels/TunnelDetail'))
+const TunnelList = lazy(() => import('./pages/tunnels/TunnelList'))
+const TrafficStats = lazy(() => import('./pages/traffic/TrafficStats'))
+const VipCenter = lazy(() => import('./pages/vip/VipCenter'))
+const VipLevelManage = lazy(() => import('./pages/vip/VipLevelManage'))
 
 const FullScreenLoading = () => (
   <div className="flex min-h-screen items-center justify-center">
@@ -39,20 +40,31 @@ const FullScreenLoading = () => (
   </div>
 )
 
+const LazyPage = ({ children }: { children: ReactNode }) => (
+  <Suspense fallback={<FullScreenLoading />}>{children}</Suspense>
+)
+
+const withLazy = (element: ReactNode) => <LazyPage>{element}</LazyPage>
+
 const ProtectedRoute = () => {
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const authChecked = useAuthStore((state) => state.authChecked)
   const isLoading = useAuthStore((state) => state.isLoading)
   const fetchMe = useAuthStore((state) => state.fetchMe)
 
   useEffect(() => {
-    if (token && !user && !isLoading) {
+    if (!authChecked && !isLoading) {
+      void fetchMe()
+      return
+    }
+    if (authChecked && token && !user && !isLoading) {
       void fetchMe()
     }
-  }, [fetchMe, isLoading, token, user])
+  }, [authChecked, fetchMe, isLoading, token, user])
 
-  if (isLoading && token) {
+  if (!authChecked || isLoading) {
     return <FullScreenLoading />
   }
 
@@ -94,25 +106,25 @@ const AuthLayout = () => {
     return <FullScreenLoading />
   }
 
-  return <MainLayout portal={user.role === 'admin' ? 'admin' : 'user'} />
+  return withLazy(<MainLayout portal={user.role === 'admin' ? 'admin' : 'user'} />)
 }
 
 const router = createBrowserRouter([
   {
     path: '/login',
-    element: <Login />,
+    element: withLazy(<Login />),
   },
   {
     path: '/register',
-    element: <Register />,
+    element: withLazy(<Register />),
   },
   {
     path: '/telegram/callback',
-    element: <TelegramCallback />,
+    element: withLazy(<TelegramCallback />),
   },
   {
     path: '/forgot-password',
-    element: <ForgotPassword />,
+    element: withLazy(<ForgotPassword />),
   },
   {
     path: '/',
@@ -127,27 +139,27 @@ const router = createBrowserRouter([
         children: [
           {
             path: 'node-groups',
-            element: <NodeGroupsPage />,
+            element: withLazy(<NodeGroupsPage />),
           },
           {
             path: 'node-groups/create',
-            element: <CreateNodeGroupPage />,
+            element: withLazy(<CreateNodeGroupPage />),
           },
           {
             path: 'node-groups/:id',
-            element: <NodeGroupDetailPage />,
+            element: withLazy(<NodeGroupDetailPage />),
           },
           {
             path: 'node-groups/:id/edit',
-            element: <EditNodeGroupPage />,
+            element: withLazy(<EditNodeGroupPage />),
           },
           {
             path: 'node-groups/:id/deploy',
-            element: <DeployNodePage />,
+            element: withLazy(<DeployNodePage />),
           },
           {
             path: 'tunnels/:id',
-            element: <TunnelDetail />,
+            element: withLazy(<TunnelDetail />),
           },
         ],
       },
@@ -156,7 +168,7 @@ const router = createBrowserRouter([
         element: <Outlet />,
         children: [
           {
-            element: <MainLayout portal="user" />,
+            element: withLazy(<MainLayout portal="user" />),
             children: [
               {
                 index: true,
@@ -164,7 +176,7 @@ const router = createBrowserRouter([
               },
               {
                 path: 'dashboard',
-                element: <UserDashboard />,
+                element: withLazy(<UserDashboard />),
               },
               {
                 path: 'node-groups',
@@ -172,35 +184,35 @@ const router = createBrowserRouter([
               },
               {
                 path: 'my-nodes',
-                element: <MyNodes />,
+                element: withLazy(<MyNodes />),
               },
               {
                 path: 'node-status',
-                element: <NodeStatus />,
+                element: withLazy(<NodeStatus />),
               },
               {
                 path: 'tunnels',
-                element: <TunnelList />,
+                element: withLazy(<TunnelList />),
               },
               {
                 path: 'tunnels/:id',
-                element: <TunnelDetail />,
+                element: withLazy(<TunnelDetail />),
               },
               {
                 path: 'traffic',
-                element: <TrafficStats />,
+                element: withLazy(<TrafficStats />),
               },
               {
                 path: 'vip',
-                element: <VipCenter />,
+                element: withLazy(<VipCenter />),
               },
               {
                 path: 'benefit-codes/redeem',
-                element: <RedeemCode />,
+                element: withLazy(<RedeemCode />),
               },
               {
                 path: 'profile',
-                element: <Profile />,
+                element: withLazy(<Profile />),
               },
             ],
           },
@@ -211,7 +223,7 @@ const router = createBrowserRouter([
         element: <AdminRoute />,
         children: [
           {
-            element: <MainLayout portal="admin" />,
+            element: withLazy(<MainLayout portal="admin" />),
             children: [
               {
                 index: true,
@@ -219,55 +231,55 @@ const router = createBrowserRouter([
               },
               {
                 path: 'dashboard',
-                element: <Dashboard />,
+                element: withLazy(<Dashboard />),
               },
               {
                 path: 'node-groups',
-                element: <NodeGroupsPage />,
+                element: withLazy(<NodeGroupsPage />),
               },
               {
                 path: 'tunnels',
-                element: <TunnelList />,
+                element: withLazy(<TunnelList />),
               },
               {
                 path: 'tunnels/:id',
-                element: <TunnelDetail />,
+                element: withLazy(<TunnelDetail />),
               },
               {
                 path: 'traffic',
-                element: <TrafficStats />,
+                element: withLazy(<TrafficStats />),
               },
               {
                 path: 'vip/levels',
-                element: <VipLevelManage />,
+                element: withLazy(<VipLevelManage />),
               },
               {
                 path: 'benefit-codes',
-                element: <BenefitCodeManage />,
+                element: withLazy(<BenefitCodeManage />),
               },
               {
                 path: 'system/config',
-                element: <SystemConfig />,
+                element: withLazy(<SystemConfig />),
               },
               {
                 path: 'system/announcements',
-                element: <Announcements />,
+                element: withLazy(<Announcements />),
               },
               {
                 path: 'system/audit-logs',
-                element: <AuditLogs />,
+                element: withLazy(<AuditLogs />),
               },
               {
                 path: 'system/users',
-                element: <UserManage />,
+                element: withLazy(<UserManage />),
               },
               {
                 path: 'system/users/:id',
-                element: <UserDetail />,
+                element: withLazy(<UserDetail />),
               },
               {
                 path: 'profile',
-                element: <Profile />,
+                element: withLazy(<Profile />),
               },
             ],
           },

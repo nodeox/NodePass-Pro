@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Card, DatePicker, Space, Spin, Empty, Statistic, Row, Col, Typography } from 'antd'
 import { ArrowUpOutlined, ArrowDownOutlined, SwapOutlined } from '@ant-design/icons'
 import dayjs, { Dayjs } from 'dayjs'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../../components/charts/EChartsCore'
 
 import { formatBytes } from '../../../utils/format'
 

@@ -1,6 +1,6 @@
 import { Card, Row, Col, Statistic, Space, Tag } from 'antd'
 import { ApiOutlined, ThunderboltOutlined, SafetyOutlined, RocketOutlined } from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
+import ReactECharts from '../../../components/charts/EChartsCore'
 import type { Tunnel } from '../../../types/nodeGroup'
 import { formatBytes } from '../../../utils/format'
 
