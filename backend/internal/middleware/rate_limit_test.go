@@ -11,10 +11,10 @@ import (
 
 func TestNewKeyRateLimiter(t *testing.T) {
 	tests := []struct {
-		name      string
-		qps       float64
-		burst     int
-		expectQPS float64
+		name        string
+		qps         float64
+		burst       int
+		expectQPS   float64
 		expectBurst int
 	}{
 		{
@@ -67,12 +67,12 @@ func TestRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name           string
-		qps            float64
-		burst          int
-		requestCount   int
-		expectBlocked  int
-		requestDelay   time.Duration
+		name          string
+		qps           float64
+		burst         int
+		requestCount  int
+		expectBlocked int
+		requestDelay  time.Duration
 	}{
 		{
 			name:          "低于限流阈值",

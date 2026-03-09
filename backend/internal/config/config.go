@@ -28,14 +28,18 @@ type ServerConfig struct {
 
 // DatabaseConfig 数据库配置。
 type DatabaseConfig struct {
-	Type     string `mapstructure:"type"`
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"db_name"`
-	DSN      string `mapstructure:"dsn"`
-	SSLMode  string `mapstructure:"ssl_mode"` // PostgreSQL SSL 模式: disable, require, verify-ca, verify-full
+	Type            string `mapstructure:"type"`
+	Host            string `mapstructure:"host"`
+	Port            int    `mapstructure:"port"`
+	User            string `mapstructure:"user"`
+	Password        string `mapstructure:"password"`
+	DBName          string `mapstructure:"db_name"`
+	DSN             string `mapstructure:"dsn"`
+	SSLMode         string `mapstructure:"ssl_mode"`           // PostgreSQL/MySQL SSL 模式
+	MaxIdleConns    int    `mapstructure:"max_idle_conns"`     // 最大空闲连接数
+	MaxOpenConns    int    `mapstructure:"max_open_conns"`     // 最大打开连接数
+	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"`  // 连接最大生命周期（秒）
+	ConnMaxIdleTime int    `mapstructure:"conn_max_idle_time"` // 空闲连接最大生命周期（秒）
 }
 
 // RedisConfig Redis 缓存配置。

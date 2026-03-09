@@ -109,15 +109,19 @@ func upsertAdminUser(db *gorm.DB, username string, email string, password string
 		}
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, false, fmt.Errorf("加密管理员密码失败: %w", err)
+	// 准备更新字段
+	updates := map[string]interface{}{
+		"role":   "admin",
+		"status": "normal",
 	}
 
-	updates := map[string]interface{}{
-		"role":          "admin",
-		"status":        "normal",
-		"password_hash": string(passwordHash),
+	// 只有在用户已存在时才更新密码（新创建的用户密码已经在 Register 中设置）
+	if !created {
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, false, fmt.Errorf("加密管理员密码失败: %w", err)
+		}
+		updates["password_hash"] = string(passwordHash)
 	}
 
 	if canUpdateUsername(db, user.ID, username) {
@@ -127,11 +131,11 @@ func upsertAdminUser(db *gorm.DB, username string, email string, password string
 		updates["email"] = email
 	}
 
-	if err = db.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+	if err := db.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
 		return nil, false, fmt.Errorf("更新管理员信息失败: %w", err)
 	}
 
-	if err = db.First(&user, user.ID).Error; err != nil {
+	if err := db.First(&user, user.ID).Error; err != nil {
 		return nil, false, fmt.Errorf("读取管理员信息失败: %w", err)
 	}
 

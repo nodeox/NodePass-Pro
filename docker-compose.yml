@@ -31,11 +31,7 @@ services:
       retries: 10
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${BACKEND_VERSION:-dev}
+    image: "${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:0.1.0}"
     container_name: nodepass-backend
     depends_on:
       postgres:
@@ -64,11 +60,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${FRONTEND_VERSION:-dev}
+    image: "${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:0.1.0}"
     container_name: nodepass-frontend
     depends_on:
       - backend

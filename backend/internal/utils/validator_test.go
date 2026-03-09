@@ -56,4 +56,3 @@ func TestValidatePassword(t *testing.T) {
 		})
 	}
 }
-

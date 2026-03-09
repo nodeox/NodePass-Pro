@@ -92,6 +92,7 @@ func CSRFProtection() gin.HandlerFunc {
 			isProduction := cfg != nil && cfg.Server.Mode == "release"
 
 			// 设置 Cookie
+			// 注意：CSRF Cookie 不能设置 HttpOnly，因为前端需要读取它来放入请求头
 			c.SetCookie(
 				csrfCookieName,
 				token,
@@ -99,7 +100,7 @@ func CSRFProtection() gin.HandlerFunc {
 				"/",
 				"",
 				isProduction, // 生产环境使用 HTTPS
-				true,         // HttpOnly
+				false,        // 不设置 HttpOnly，允许 JavaScript 读取
 			)
 
 			// 设置 SameSite 属性

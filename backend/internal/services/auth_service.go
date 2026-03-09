@@ -1,8 +1,7 @@
 package services
 
 import (
-	"crypto/rand"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,6 +21,7 @@ type AuthService struct {
 	vipService          *VIPService
 	refreshTokenService *RefreshTokenService
 	emailService        *EmailService
+	verificationService *VerificationCodeService
 }
 
 // RegisterRequest 注册请求。
@@ -52,13 +52,6 @@ type EmailChangeCodeResult struct {
 	Sent      bool      `json:"sent"`
 }
 
-type emailChangeCodePayload struct {
-	UserID    uint   `json:"user_id"`
-	NewEmail  string `json:"new_email"`
-	Code      string `json:"code"`
-	ExpiresAt int64  `json:"expires_at"`
-}
-
 const emailChangeCodeTTL = 10 * time.Minute
 
 // NewAuthService 创建认证服务。
@@ -68,6 +61,7 @@ func NewAuthService(db *gorm.DB) *AuthService {
 		vipService:          NewVIPService(db),
 		refreshTokenService: NewRefreshTokenService(db),
 		emailService:        NewEmailService(db),
+		verificationService: NewVerificationCodeService(db),
 	}
 }
 
@@ -173,11 +167,14 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResult, error) {
 	now := time.Now()
 	if err := s.db.Model(&models.User{}).Where("id = ?", user.ID).Update("last_login_at", &now).Error; err != nil {
 		// 更新登录时间失败不影响登录流程，但需要记录日志
-		// 注意：这里无法直接使用 zap，因为会导致循环依赖
-		// 错误会在上层被记录
-		_ = err // 明确标记为已知的非关键错误
+		zap.L().Warn("更新用户登录时间失败",
+			zap.Uint("user_id", user.ID),
+			zap.Error(err))
+		// 不更新内存中的时间，保持与数据库一致
+	} else {
+		// 只有更新成功才设置内存中的时间
+		user.LastLoginAt = &now
 	}
-	user.LastLoginAt = &now
 
 	return &LoginResult{
 		AccessToken:  token,
@@ -296,42 +293,24 @@ func (s *AuthService) SendEmailChangeCode(userID uint, password string, newEmail
 		return nil, err
 	}
 
-	code, err := generateNumericCode(6)
+	code, err := s.verificationService.GenerateNumericCode(6)
 	if err != nil {
 		return nil, fmt.Errorf("生成邮箱验证码失败: %w", err)
 	}
-	expiresAt := time.Now().Add(emailChangeCodeTTL)
-	payload := emailChangeCodePayload{
-		UserID:    userID,
-		NewEmail:  newEmail,
-		Code:      code,
-		ExpiresAt: expiresAt.Unix(),
-	}
-	payloadBytes, _ := json.Marshal(payload)
-	key := fmt.Sprintf("auth_email_change_code:%d", userID)
-	value := string(payloadBytes)
-	description := "修改邮箱验证码"
 
-	var systemConfig models.SystemConfig
-	queryErr := s.db.Where("key = ?", key).First(&systemConfig).Error
-	if queryErr == nil {
-		if err := s.db.Model(&models.SystemConfig{}).Where("id = ?", systemConfig.ID).Updates(map[string]interface{}{
-			"value":       value,
-			"description": description,
-		}).Error; err != nil {
-			return nil, fmt.Errorf("保存邮箱验证码失败: %w", err)
-		}
-	} else if errors.Is(queryErr, gorm.ErrRecordNotFound) {
-		systemConfig = models.SystemConfig{
-			Key:         key,
-			Value:       &value,
-			Description: &description,
-		}
-		if err := s.db.Create(&systemConfig).Error; err != nil {
-			return nil, fmt.Errorf("保存邮箱验证码失败: %w", err)
-		}
-	} else {
-		return nil, fmt.Errorf("保存邮箱验证码失败: %w", queryErr)
+	expiresAt := time.Now().Add(emailChangeCodeTTL)
+	codeData := &VerificationCodeData{
+		UserID:    userID,
+		Code:      code,
+		Purpose:   "email_change",
+		Target:    newEmail,
+		ExpiresAt: expiresAt,
+	}
+
+	// 使用新的验证码服务存储（优先 Redis，降级数据库）
+	ctx := context.Background()
+	if err := s.verificationService.StoreCode(ctx, codeData); err != nil {
+		return nil, fmt.Errorf("保存邮箱验证码失败: %w", err)
 	}
 
 	sent := false
@@ -381,36 +360,12 @@ func (s *AuthService) ChangeEmail(userID uint, newEmail string, code string) err
 		return fmt.Errorf("%w: 新邮箱不能与当前邮箱相同", ErrInvalidParams)
 	}
 
-	key := fmt.Sprintf("auth_email_change_code:%d", userID)
-	var systemConfig models.SystemConfig
-	if err := s.db.Where("key = ?", key).First(&systemConfig).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("%w: 请先发送邮箱验证码", ErrNotFound)
-		}
-		return fmt.Errorf("查询邮箱验证码失败: %w", err)
-	}
-	if systemConfig.Value == nil || strings.TrimSpace(*systemConfig.Value) == "" {
-		return fmt.Errorf("%w: 验证码无效", ErrInvalidParams)
+	// 使用新的验证码服务验证
+	ctx := context.Background()
+	if err := s.verificationService.VerifyAndDelete(ctx, userID, "email_change", code, newEmail); err != nil {
+		return err
 	}
 
-	var payload emailChangeCodePayload
-	if err := json.Unmarshal([]byte(*systemConfig.Value), &payload); err != nil {
-		return fmt.Errorf("%w: 验证码数据格式错误", ErrInvalidParams)
-	}
-
-	if payload.UserID != userID {
-		return fmt.Errorf("%w: 验证码不属于当前用户", ErrForbidden)
-	}
-	if !strings.EqualFold(strings.TrimSpace(payload.NewEmail), newEmail) {
-		return fmt.Errorf("%w: 验证码与新邮箱不匹配", ErrUnauthorized)
-	}
-	if payload.Code != code {
-		return fmt.Errorf("%w: 验证码错误", ErrUnauthorized)
-	}
-	if time.Now().Unix() > payload.ExpiresAt {
-		_ = s.db.Where("id = ?", systemConfig.ID).Delete(&models.SystemConfig{}).Error
-		return fmt.Errorf("%w: 验证码已过期", ErrUnauthorized)
-	}
 	if err := s.ensureEmailAvailable(newEmail, userID); err != nil {
 		return err
 	}
@@ -423,9 +378,6 @@ func (s *AuthService) ChangeEmail(userID uint, newEmail string, code string) err
 				return fmt.Errorf("%w: 邮箱已被使用", ErrConflict)
 			}
 			return fmt.Errorf("更新邮箱失败: %w", err)
-		}
-		if err := tx.Where("id = ?", systemConfig.ID).Delete(&models.SystemConfig{}).Error; err != nil {
-			return fmt.Errorf("清理邮箱验证码失败: %w", err)
 		}
 		return nil
 	}); err != nil {
@@ -464,20 +416,4 @@ func (s *AuthService) ensureEmailAvailable(email string, excludeUserID uint) err
 		return fmt.Errorf("%w: 邮箱已被使用", ErrConflict)
 	}
 	return nil
-}
-
-func generateNumericCode(length int) (string, error) {
-	if length <= 0 {
-		return "", fmt.Errorf("验证码长度必须大于 0")
-	}
-	const digits = "0123456789"
-	buf := make([]byte, length)
-	random := make([]byte, length)
-	if _, err := rand.Read(random); err != nil {
-		return "", err
-	}
-	for i := range random {
-		buf[i] = digits[int(random[i])%len(digits)]
-	}
-	return string(buf), nil
 }

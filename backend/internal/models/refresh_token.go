@@ -23,9 +23,9 @@ type RefreshToken struct {
 	IsRevoked bool      `gorm:"default:false;index" json:"is_revoked"` // 是否已撤销
 
 	// 元数据
-	IPAddress string `gorm:"type:varchar(45)" json:"ip_address"` // 创建时的 IP
-	UserAgent string `gorm:"type:varchar(512)" json:"user_agent"` // 创建时的 User-Agent
-	LastUsedAt *time.Time `json:"last_used_at"` // 最后使用时间
+	IPAddress  string     `gorm:"type:varchar(45)" json:"ip_address"`  // 创建时的 IP
+	UserAgent  string     `gorm:"type:varchar(512)" json:"user_agent"` // 创建时的 User-Agent
+	LastUsedAt *time.Time `json:"last_used_at"`                        // 最后使用时间
 }
 
 // TableName 指定表名

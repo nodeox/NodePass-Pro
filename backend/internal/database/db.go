@@ -48,8 +48,14 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	case "mysql":
 		dsn = cfg.DSN
 		if dsn == "" {
-			dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-				cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)
+			// 默认启用 TLS 连接以提高安全性
+			tlsConfig := "true" // 默认启用 TLS
+			if cfg.SSLMode != "" {
+				// 支持自定义 TLS 配置：true, false, skip-verify, preferred
+				tlsConfig = cfg.SSLMode
+			}
+			dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local&tls=%s",
+				cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName, tlsConfig)
 		}
 		dialector = mysql.Open(dsn)
 	case "postgres", "postgresql":
@@ -80,16 +86,34 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("获取数据库实例失败: %w", err)
 	}
 
-	// 设置连接池参数
-	sqlDB.SetMaxIdleConns(10)                  // 最大空闲连接数
-	sqlDB.SetMaxOpenConns(100)                 // 最大打开连接数
-	sqlDB.SetConnMaxLifetime(time.Hour)        // 连接最大生命周期
-	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // 空闲连接最大生命周期
+	// 设置连接池参数（支持配置文件自定义）
+	maxIdleConns := cfg.MaxIdleConns
+	if maxIdleConns <= 0 {
+		maxIdleConns = 10
+	}
+	maxOpenConns := cfg.MaxOpenConns
+	if maxOpenConns <= 0 {
+		maxOpenConns = 100
+	}
+	connMaxLifetime := time.Duration(cfg.ConnMaxLifetime) * time.Second
+	if connMaxLifetime <= 0 {
+		connMaxLifetime = time.Hour
+	}
+	connMaxIdleTime := time.Duration(cfg.ConnMaxIdleTime) * time.Second
+	if connMaxIdleTime <= 0 {
+		connMaxIdleTime = 10 * time.Minute
+	}
+
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
 
 	zap.L().Info("数据库连接池配置完成",
-		zap.Int("max_idle_conns", 10),
-		zap.Int("max_open_conns", 100),
-		zap.Duration("conn_max_lifetime", time.Hour))
+		zap.Int("max_idle_conns", maxIdleConns),
+		zap.Int("max_open_conns", maxOpenConns),
+		zap.Duration("conn_max_lifetime", connMaxLifetime),
+		zap.Duration("conn_max_idle_time", connMaxIdleTime))
 
 	if err := AutoMigrate(db); err != nil {
 		return nil, fmt.Errorf("自动迁移失败: %w", err)
@@ -126,6 +150,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.SystemConfig{},
 		&models.Announcement{},
 		&models.AuditLog{},
+		&models.NodeHealthCheck{},
+		&models.NodeHealthRecord{},
+		&models.NodeQualityScore{},
+		&models.NodePerformanceMetric{},
+		&models.NodePerformanceAlert{},
+		&models.NodePerformanceAlertRecord{},
+		&models.NodePerformanceSummary{},
 	); err != nil {
 		return err
 	}

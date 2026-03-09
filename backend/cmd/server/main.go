@@ -152,13 +152,21 @@ func validateSecurityConfig(cfg *config.Config) error {
 func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.RequestID()) // 请求 ID 追踪（必须在最前面）
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.ErrorHandler())
 	r.Use(middleware.SecurityHeaders())                 // 添加安全 HTTP 头
 	r.Use(middleware.RequestBodyLimit(1 * 1024 * 1024)) // 全局默认 1MB 限制
 	r.Use(middleware.RateLimit(20, 50))                 // 降低全局速率限制：20 QPS，50 突发
 
-	r.GET("/health", func(c *gin.Context) {
+	// 健康检查端点（不需要认证）
+	healthHandler := handlers.NewHealthHandler()
+	r.GET("/health", healthHandler.Health)
+	r.GET("/readiness", healthHandler.Readiness)
+	r.GET("/liveness", healthHandler.Liveness)
+
+	// 旧的健康检查端点（保持兼容性，包含授权信息）
+	r.GET("/health-legacy", func(c *gin.Context) {
 		licenseStatus := gin.H{
 			"enabled": false,
 			"valid":   true,
@@ -196,6 +204,8 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	alertHandler := handlers.NewAlertHandler(database.DB)
 	alertRuleHandler := handlers.NewAlertRuleHandler(database.DB)
 	notificationChannelHandler := handlers.NewNotificationChannelHandler(database.DB)
+	nodeHealthHandler := handlers.NewNodeHealthHandler(database.DB)
+	nodePerformanceHandler := handlers.NewNodePerformanceHandler(database.DB)
 
 	wsHub := panelws.NewHub()
 	wsHandler := handlers.NewWebSocketHandler(wsHub)
@@ -280,7 +290,35 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			nodeInstances.PUT("/:id", nodeInstanceHandler.Update)
 			nodeInstances.DELETE("/:id", nodeInstanceHandler.Delete)
 			nodeInstances.POST("/:id/restart", nodeInstanceHandler.Restart)
+
+			// 节点健康检查
+			nodeInstances.POST("/:id/health-check", nodeHealthHandler.CreateHealthCheck)
+			nodeInstances.GET("/:id/health-check", nodeHealthHandler.GetHealthCheck)
+			nodeInstances.PUT("/:id/health-check", nodeHealthHandler.UpdateHealthCheck)
+			nodeInstances.DELETE("/:id/health-check", nodeHealthHandler.DeleteHealthCheck)
+			nodeInstances.POST("/:id/health-check/perform", nodeHealthHandler.PerformHealthCheck)
+			nodeInstances.GET("/:id/quality-score", nodeHealthHandler.GetQualityScore)
+			nodeInstances.GET("/:id/health-records", nodeHealthHandler.GetHealthRecords)
+			nodeInstances.GET("/:id/health-stats", nodeHealthHandler.GetHealthStats)
+
+			// 节点性能监控
+			nodeInstances.POST("/:id/performance/metrics", nodePerformanceHandler.RecordMetric)
+			nodeInstances.GET("/:id/performance/latest", nodePerformanceHandler.GetLatestMetric)
+			nodeInstances.GET("/:id/performance/metrics", nodePerformanceHandler.GetMetrics)
+			nodeInstances.GET("/:id/performance/stats", nodePerformanceHandler.GetMetricsStats)
+			nodeInstances.POST("/:id/performance/alert", nodePerformanceHandler.CreateAlert)
+			nodeInstances.GET("/:id/performance/alert", nodePerformanceHandler.GetAlert)
+			nodeInstances.PUT("/:id/performance/alert", nodePerformanceHandler.UpdateAlert)
+			nodeInstances.DELETE("/:id/performance/alert", nodePerformanceHandler.DeleteAlert)
+			nodeInstances.GET("/:id/performance/alert-records", nodePerformanceHandler.GetAlertRecords)
+			nodeInstances.GET("/:id/performance/summaries", nodePerformanceHandler.GetSummaries)
 		}
+
+		// 节点质量评分列表
+		authGroup.GET("/node-instances/quality-scores", nodeHealthHandler.ListQualityScores)
+
+		// 解决性能告警
+		authGroup.POST("/node-instances/performance/alert-records/:alert_id/resolve", nodePerformanceHandler.ResolveAlert)
 
 		tunnels := authGroup.Group("/tunnels")
 		{
@@ -515,6 +553,86 @@ func startCronTasks() (*cron.Cron, error) {
 	if err := addTask("0 0 * * * *", "csrf.cleanup_expired_tokens", func() error {
 		middleware.CleanupExpiredTokens()
 		zap.L().Info("CSRF 令牌清理完成")
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 节点健康检查任务 - 每分钟执行一次
+	nodeHealthService := services.NewNodeHealthService(database.DB)
+	if err := addTask("0 * * * * *", "node_health.batch_check", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if runErr := nodeHealthService.BatchPerformHealthCheck(ctx); runErr != nil {
+			return runErr
+		}
+		zap.L().Info("节点健康检查完成")
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 清理旧的健康检查记录 - 每天凌晨 2 点执行
+	if err := addTask("0 0 2 * * *", "node_health.cleanup_old_records", func() error {
+		rows, runErr := nodeHealthService.CleanupOldRecords(30)
+		if runErr != nil {
+			return runErr
+		}
+		zap.L().Info("健康检查记录清理完成", zap.Int64("deleted_rows", rows))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 性能指标聚合任务 - 每小时执行一次
+	nodePerformanceService := services.NewNodePerformanceService(database.DB)
+	if err := addTask("0 0 * * * *", "node_performance.aggregate_hourly", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		if runErr := nodePerformanceService.AggregateMetrics(ctx, "hourly"); runErr != nil {
+			return runErr
+		}
+		zap.L().Info("性能指标小时聚合完成")
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 性能指标聚合任务 - 每天凌晨 1 点执行
+	if err := addTask("0 0 1 * * *", "node_performance.aggregate_daily", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+
+		if runErr := nodePerformanceService.AggregateMetrics(ctx, "daily"); runErr != nil {
+			return runErr
+		}
+		zap.L().Info("性能指标每日聚合完成")
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 清理旧的性能指标 - 每天凌晨 3 点执行
+	if err := addTask("0 0 3 * * *", "node_performance.cleanup_old_metrics", func() error {
+		rows, runErr := nodePerformanceService.CleanupOldMetrics(7)
+		if runErr != nil {
+			return runErr
+		}
+		zap.L().Info("性能指标清理完成", zap.Int64("deleted_rows", rows))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 清理旧的性能汇总 - 每天凌晨 3 点执行
+	if err := addTask("0 0 3 * * *", "node_performance.cleanup_old_summaries", func() error {
+		rows, runErr := nodePerformanceService.CleanupOldSummaries(90)
+		if runErr != nil {
+			return runErr
+		}
+		zap.L().Info("性能汇总清理完成", zap.Int64("deleted_rows", rows))
 		return nil
 	}); err != nil {
 		return nil, err

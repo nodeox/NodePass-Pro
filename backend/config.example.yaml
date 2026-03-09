@@ -1,0 +1,56 @@
+# NodePass-Pro 后端配置示例
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+server:
+  port: "8080"
+  mode: "debug" # debug, release
+  allowed_origins:
+    - "localhost"
+    - "127.0.0.1"
+  trust_forwarded_headers: false # 是否信任 X-Forwarded-* 头（反向代理后设置为 true）
+  strict_csrf: false # 是否启用严格 CSRF 模式（生产环境建议 true）
+
+database:
+  type: "postgres" # sqlite, mysql, postgres
+  host: "localhost"
+  port: 5432
+  user: "nodepass"
+  password: "your_password_here"
+  db_name: "nodepass"
+  # dsn: "" # 可选：直接指定 DSN 连接字符串
+  ssl_mode: "require" # PostgreSQL: disable, require, verify-ca, verify-full
+                      # MySQL: true, false, skip-verify, preferred
+
+  # 连接池配置（可选，使用默认值如果不设置）
+  max_idle_conns: 10      # 最大空闲连接数
+  max_open_conns: 100     # 最大打开连接数
+  conn_max_lifetime: 3600 # 连接最大生命周期（秒）
+  conn_max_idle_time: 600 # 空闲连接最大生命周期（秒）
+
+redis:
+  enabled: true
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  key_prefix: "nodepass:panel"
+  default_ttl: 300 # 默认缓存时间（秒）
+
+jwt:
+  secret: "your_jwt_secret_here_change_in_production" # 生产环境必须修改
+  expire_time: 24 # JWT 过期时间（小时）
+
+telegram:
+  bot_token: ""
+  bot_username: ""
+  webhook_url: ""
+  secret_token: ""
+
+license:
+  enabled: false
+  license_key: ""
+  machine_id: ""
+  domain: ""
+  site_url: ""
+  verify_interval: 300 # 验证间隔（秒）
+  fail_open: false # 验证失败时是否允许继续运行
+  offline_grace_seconds: 600 # 离线宽限期（秒）

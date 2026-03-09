@@ -12,50 +12,50 @@ type ErrorCode string
 // 定义标准错误码
 const (
 	// 通用错误码 (1000-1999)
-	ErrCodeInternal       ErrorCode = "INTERNAL_ERROR"        // 内部错误
-	ErrCodeInvalidRequest ErrorCode = "INVALID_REQUEST"       // 请求参数错误
-	ErrCodeInvalidParams  ErrorCode = "INVALID_PARAMS"        // 参数验证失败
-	ErrCodeNotFound       ErrorCode = "NOT_FOUND"             // 资源不存在
-	ErrCodeConflict       ErrorCode = "CONFLICT"              // 资源冲突
-	ErrCodeForbidden      ErrorCode = "FORBIDDEN"             // 禁止访问
-	ErrCodeUnauthorized   ErrorCode = "UNAUTHORIZED"          // 未授权
-	ErrCodeTooManyReqs    ErrorCode = "TOO_MANY_REQUESTS"     // 请求过于频繁
-	ErrCodeServiceUnavail ErrorCode = "SERVICE_UNAVAILABLE"   // 服务不可用
+	ErrCodeInternal       ErrorCode = "INTERNAL_ERROR"      // 内部错误
+	ErrCodeInvalidRequest ErrorCode = "INVALID_REQUEST"     // 请求参数错误
+	ErrCodeInvalidParams  ErrorCode = "INVALID_PARAMS"      // 参数验证失败
+	ErrCodeNotFound       ErrorCode = "NOT_FOUND"           // 资源不存在
+	ErrCodeConflict       ErrorCode = "CONFLICT"            // 资源冲突
+	ErrCodeForbidden      ErrorCode = "FORBIDDEN"           // 禁止访问
+	ErrCodeUnauthorized   ErrorCode = "UNAUTHORIZED"        // 未授权
+	ErrCodeTooManyReqs    ErrorCode = "TOO_MANY_REQUESTS"   // 请求过于频繁
+	ErrCodeServiceUnavail ErrorCode = "SERVICE_UNAVAILABLE" // 服务不可用
 
 	// 认证相关错误码 (2000-2999)
-	ErrCodeAuthFailed        ErrorCode = "AUTH_FAILED"           // 认证失败
-	ErrCodeTokenInvalid      ErrorCode = "TOKEN_INVALID"         // Token 无效
-	ErrCodeTokenExpired      ErrorCode = "TOKEN_EXPIRED"         // Token 过期
-	ErrCodePasswordIncorrect ErrorCode = "PASSWORD_INCORRECT"    // 密码错误
-	ErrCodeUserNotFound      ErrorCode = "USER_NOT_FOUND"        // 用户不存在
-	ErrCodeUserExists        ErrorCode = "USER_EXISTS"           // 用户已存在
-	ErrCodeUserDisabled      ErrorCode = "USER_DISABLED"         // 用户已禁用
-	ErrCodePermissionDenied  ErrorCode = "PERMISSION_DENIED"     // 权限不足
+	ErrCodeAuthFailed        ErrorCode = "AUTH_FAILED"        // 认证失败
+	ErrCodeTokenInvalid      ErrorCode = "TOKEN_INVALID"      // Token 无效
+	ErrCodeTokenExpired      ErrorCode = "TOKEN_EXPIRED"      // Token 过期
+	ErrCodePasswordIncorrect ErrorCode = "PASSWORD_INCORRECT" // 密码错误
+	ErrCodeUserNotFound      ErrorCode = "USER_NOT_FOUND"     // 用户不存在
+	ErrCodeUserExists        ErrorCode = "USER_EXISTS"        // 用户已存在
+	ErrCodeUserDisabled      ErrorCode = "USER_DISABLED"      // 用户已禁用
+	ErrCodePermissionDenied  ErrorCode = "PERMISSION_DENIED"  // 权限不足
 
 	// 业务相关错误码 (3000-3999)
-	ErrCodeTunnelNotFound    ErrorCode = "TUNNEL_NOT_FOUND"      // 隧道不存在
-	ErrCodeTunnelExists      ErrorCode = "TUNNEL_EXISTS"         // 隧道已存在
-	ErrCodeTunnelStartFailed ErrorCode = "TUNNEL_START_FAILED"   // 隧道启动失败
-	ErrCodeNodeNotFound      ErrorCode = "NODE_NOT_FOUND"        // 节点不存在
-	ErrCodeNodeOffline       ErrorCode = "NODE_OFFLINE"          // 节点离线
-	ErrCodeGroupNotFound     ErrorCode = "GROUP_NOT_FOUND"       // 节点组不存在
-	ErrCodeGroupExists       ErrorCode = "GROUP_EXISTS"          // 节点组已存在
-	ErrCodeVIPNotFound       ErrorCode = "VIP_NOT_FOUND"         // VIP 等级不存在
-	ErrCodeVIPExpired        ErrorCode = "VIP_EXPIRED"           // VIP 已过期
-	ErrCodeCodeInvalid       ErrorCode = "CODE_INVALID"          // 权益码无效
-	ErrCodeCodeUsed          ErrorCode = "CODE_USED"             // 权益码已使用
-	ErrCodeCodeExpired       ErrorCode = "CODE_EXPIRED"          // 权益码已过期
+	ErrCodeTunnelNotFound    ErrorCode = "TUNNEL_NOT_FOUND"    // 隧道不存在
+	ErrCodeTunnelExists      ErrorCode = "TUNNEL_EXISTS"       // 隧道已存在
+	ErrCodeTunnelStartFailed ErrorCode = "TUNNEL_START_FAILED" // 隧道启动失败
+	ErrCodeNodeNotFound      ErrorCode = "NODE_NOT_FOUND"      // 节点不存在
+	ErrCodeNodeOffline       ErrorCode = "NODE_OFFLINE"        // 节点离线
+	ErrCodeGroupNotFound     ErrorCode = "GROUP_NOT_FOUND"     // 节点组不存在
+	ErrCodeGroupExists       ErrorCode = "GROUP_EXISTS"        // 节点组已存在
+	ErrCodeVIPNotFound       ErrorCode = "VIP_NOT_FOUND"       // VIP 等级不存在
+	ErrCodeVIPExpired        ErrorCode = "VIP_EXPIRED"         // VIP 已过期
+	ErrCodeCodeInvalid       ErrorCode = "CODE_INVALID"        // 权益码无效
+	ErrCodeCodeUsed          ErrorCode = "CODE_USED"           // 权益码已使用
+	ErrCodeCodeExpired       ErrorCode = "CODE_EXPIRED"        // 权益码已过期
 
 	// 配额相关错误码 (4000-4999)
-	ErrCodeQuotaExceeded    ErrorCode = "QUOTA_EXCEEDED"        // 配额已超限
-	ErrCodeTrafficExceeded  ErrorCode = "TRAFFIC_EXCEEDED"      // 流量已超限
-	ErrCodeRuleLimitReached ErrorCode = "RULE_LIMIT_REACHED"    // 规则数量达到上限
-	ErrCodeNodeLimitReached ErrorCode = "NODE_LIMIT_REACHED"    // 节点数量达到上限
+	ErrCodeQuotaExceeded    ErrorCode = "QUOTA_EXCEEDED"     // 配额已超限
+	ErrCodeTrafficExceeded  ErrorCode = "TRAFFIC_EXCEEDED"   // 流量已超限
+	ErrCodeRuleLimitReached ErrorCode = "RULE_LIMIT_REACHED" // 规则数量达到上限
+	ErrCodeNodeLimitReached ErrorCode = "NODE_LIMIT_REACHED" // 节点数量达到上限
 
 	// 授权相关错误码 (5000-5999)
-	ErrCodeLicenseInvalid  ErrorCode = "LICENSE_INVALID"        // 授权无效
-	ErrCodeLicenseExpired  ErrorCode = "LICENSE_EXPIRED"        // 授权已过期
-	ErrCodeLicenseNotFound ErrorCode = "LICENSE_NOT_FOUND"      // 授权不存在
+	ErrCodeLicenseInvalid  ErrorCode = "LICENSE_INVALID"   // 授权无效
+	ErrCodeLicenseExpired  ErrorCode = "LICENSE_EXPIRED"   // 授权已过期
+	ErrCodeLicenseNotFound ErrorCode = "LICENSE_NOT_FOUND" // 授权不存在
 )
 
 // AppError 应用错误类型

@@ -27,6 +27,9 @@ type KeyRateLimiter struct {
 	ttl             time.Duration
 	lastCleanupAt   time.Time
 	cleanupMu       sync.Mutex
+	stopChan        chan struct{} // 用于停止清理 goroutine
+	stopped         bool
+	stopMu          sync.Mutex
 }
 
 // NewKeyRateLimiter 创建新的限流器。
@@ -44,12 +47,25 @@ func NewKeyRateLimiter(qps float64, burst int) *KeyRateLimiter {
 		cleanupInterval: 1 * time.Minute,
 		ttl:             5 * time.Minute,
 		lastCleanupAt:   time.Now(),
+		stopChan:        make(chan struct{}),
+		stopped:         false,
 	}
 
 	// 启动后台清理 goroutine
 	go limiter.cleanupLoop()
 
 	return limiter
+}
+
+// Stop 停止限流器的后台清理 goroutine
+func (l *KeyRateLimiter) Stop() {
+	l.stopMu.Lock()
+	defer l.stopMu.Unlock()
+
+	if !l.stopped {
+		close(l.stopChan)
+		l.stopped = true
+	}
 }
 
 // RateLimit 返回限流中间件。
@@ -105,8 +121,13 @@ func (l *KeyRateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(l.cleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		l.cleanup()
+	for {
+		select {
+		case <-ticker.C:
+			l.cleanup()
+		case <-l.stopChan:
+			return
+		}
 	}
 }
 

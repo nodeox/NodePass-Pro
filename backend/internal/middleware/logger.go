@@ -41,9 +41,13 @@ func RequestLogger() gin.HandlerFunc {
 			requestSize = 0
 		}
 
+		// 获取请求 ID
+		requestID := GetRequestID(c)
+
 		// 对敏感路径进行脱敏处理
 		if isSensitivePath(path) {
 			zap.L().Info("敏感请求",
+				zap.String("request_id", requestID),
 				zap.String("method", c.Request.Method),
 				zap.String("path", "[REDACTED]"),
 				zap.Int("status", c.Writer.Status()),
@@ -53,6 +57,7 @@ func RequestLogger() gin.HandlerFunc {
 		}
 
 		zap.L().Info("HTTP 请求",
+			zap.String("request_id", requestID),
 			zap.String("method", c.Request.Method),
 			zap.String("path", path),
 			zap.Int("status", c.Writer.Status()),

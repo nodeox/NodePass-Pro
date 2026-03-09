@@ -132,14 +132,11 @@ func (h *AuthHandler) SendEmailChangeCode(c *gin.Context) {
 		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(req.NewEmail) == "" {
-		req.NewEmail = strings.TrimSpace(req.NewEmailAlt)
-	}
-	if strings.TrimSpace(req.NewEmail) == "" {
-		req.NewEmail = strings.TrimSpace(req.NewEmailLegacy)
-	}
 
-	result, err := h.authService.SendEmailChangeCode(userID, req.Password, req.NewEmail)
+	// 使用辅助函数合并多个字段
+	newEmail := coalesceString(req.NewEmail, req.NewEmailAlt, req.NewEmailLegacy)
+
+	result, err := h.authService.SendEmailChangeCode(userID, req.Password, newEmail)
 	if err != nil {
 		writeServiceError(c, err, "SEND_EMAIL_CODE_FAILED")
 		return
@@ -176,17 +173,12 @@ func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(req.NewEmail) == "" {
-		req.NewEmail = strings.TrimSpace(req.NewEmailAlt)
-	}
-	if strings.TrimSpace(req.NewEmail) == "" {
-		req.NewEmail = strings.TrimSpace(req.NewEmailLegacy)
-	}
-	if strings.TrimSpace(req.Code) == "" {
-		req.Code = strings.TrimSpace(req.CodeAlt)
-	}
 
-	if err := h.authService.ChangeEmail(userID, req.NewEmail, req.Code); err != nil {
+	// 使用辅助函数合并多个字段
+	newEmail := coalesceString(req.NewEmail, req.NewEmailAlt, req.NewEmailLegacy)
+	code := coalesceString(req.Code, req.CodeAlt)
+
+	if err := h.authService.ChangeEmail(userID, newEmail, code); err != nil {
 		writeServiceError(c, err, "CHANGE_EMAIL_FAILED")
 		return
 	}
