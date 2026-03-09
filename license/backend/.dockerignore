@@ -1,0 +1,7 @@
+.git
+.env
+data
+uploads
+*.log
+*.pid
+license-server

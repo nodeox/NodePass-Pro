@@ -1,0 +1,47 @@
+name: nodepass-license
+
+services:
+  license-backend:
+    image: ${BACKEND_IMAGE:-nodepass/license-backend:latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: license-backend
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      SERVER_PORT: "8091"
+      GIN_MODE: ${GIN_MODE:-release}
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DB_DSN: ${DB_DSN:-/app/data/license-unified.db}
+      JWT_EXPIRE_HOURS: ${JWT_EXPIRE_HOURS:-24}
+      RELEASE_UPLOAD_DIR: ${RELEASE_UPLOAD_DIR:-/app/uploads/releases}
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8091/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  license-frontend:
+    image: ${FRONTEND_IMAGE:-nodepass/license-frontend:latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: /api/v1
+    container_name: license-frontend
+    restart: unless-stopped
+    depends_on:
+      license-backend:
+        condition: service_healthy
+    ports:
+      - "${PANEL_PORT:-8088}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3

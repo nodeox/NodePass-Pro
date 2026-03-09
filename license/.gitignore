@@ -1,0 +1,16 @@
+backend/data/
+backend/.env
+backend/*.log
+backend/*.pid
+backend/license-server
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/*.tsbuildinfo
+frontend/*.log
+frontend/*.pid
+.DS_Store
+.env.docker
+data/
+uploads/
+deploy/

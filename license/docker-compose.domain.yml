@@ -1,0 +1,15 @@
+services:
+  license-caddy:
+    image: caddy:2.10-alpine
+    container_name: license-caddy
+    restart: unless-stopped
+    depends_on:
+      license-frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy_data:/data
+      - ./deploy/caddy_config:/config
