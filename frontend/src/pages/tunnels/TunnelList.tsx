@@ -573,7 +573,14 @@ const TunnelList = () => {
           layout="vertical"
           onFinish={async (values: { name: string; description?: string; is_public: boolean }) => {
             try {
-              const config = tunnel.config || {}
+              const config: TunnelConfig = tunnel.config ?? {
+                load_balance_strategy: 'round_robin',
+                ip_type: 'auto',
+                enable_proxy_protocol: false,
+                forward_targets: [],
+                health_check_interval: 0,
+                health_check_timeout: 0,
+              }
               await tunnelTemplateApi.create({
                 name: values.name,
                 description: values.description,
@@ -589,7 +596,7 @@ const TunnelList = () => {
                   forward_targets: config.forward_targets || [],
                   health_check_interval: config.health_check_interval || 0,
                   health_check_timeout: config.health_check_timeout || 0,
-                  protocol_config: config.protocol_config,
+                  protocol_config: config.protocol_config as Record<string, unknown> | undefined,
                 },
                 is_public: values.is_public,
               })
