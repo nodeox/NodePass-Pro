@@ -1037,14 +1037,41 @@ build_interactive_deploy_args() {
 
 run_compose_cmd() {
   local compose_args=(-f docker-compose.yml)
+  local backend_config_env="${BACKEND_CONFIG_FILE_REL}"
+  if [[ -z "$BACKEND_CONFIG_FILE_ABS" ]]; then
+    backend_config_env="./backend/configs/config.docker.yaml"
+  fi
+
   if [[ "$WITH_CADDY" == true ]]; then
     compose_args+=(-f docker-compose.caddy.yml)
   fi
 
   if [[ "$RUN_DEPLOY_AS_SUDO" == true ]]; then
-    (cd "$INSTALL_DIR" && run_root docker compose "${compose_args[@]}" "$@")
+    (cd "$INSTALL_DIR" && run_root env \
+      BACKEND_CONFIG_FILE="$backend_config_env" \
+      FRONTEND_BIND="$FRONTEND_BIND" \
+      JWT_SECRET="$JWT_SECRET" \
+      JWT_EXPIRE_TIME="$JWT_EXPIRE_TIME" \
+      LICENSE_KEY="$LICENSE_KEY" \
+      LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
+      LICENSE_ACTION="$ACTION" \
+      LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
+      BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
+      docker compose "${compose_args[@]}" "$@")
   else
-    (cd "$INSTALL_DIR" && docker compose "${compose_args[@]}" "$@")
+    (cd "$INSTALL_DIR" && env \
+      BACKEND_CONFIG_FILE="$backend_config_env" \
+      FRONTEND_BIND="$FRONTEND_BIND" \
+      JWT_SECRET="$JWT_SECRET" \
+      JWT_EXPIRE_TIME="$JWT_EXPIRE_TIME" \
+      LICENSE_KEY="$LICENSE_KEY" \
+      LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
+      LICENSE_ACTION="$ACTION" \
+      LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
+      BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
+      docker compose "${compose_args[@]}" "$@")
   fi
 }
 
