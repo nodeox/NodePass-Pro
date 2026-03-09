@@ -20,8 +20,11 @@ RUN go mod download
 # 复制源代码
 COPY . .
 
-# 构建二进制文件（注入版本信息）
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+# 安装 SQLite 依赖
+RUN apt-get update && apt-get install -y gcc && rm -rf /var/lib/apt/lists/*
+
+# 构建二进制文件（注入版本信息，启用 CGO 支持 SQLite）
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags "-s -w \
     -X 'main.appVersion=${VERSION}' \
     -X 'nodepass-license-center/pkg/version.Version=${VERSION}' \
