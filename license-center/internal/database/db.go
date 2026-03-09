@@ -60,6 +60,8 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 		&models.LicenseTransferLog{},
 		&models.LicenseDomainBinding{},
 		&models.DomainIPBinding{},
+		&models.ComponentVersion{},
+		&models.VersionCompatibility{},
 	); err != nil {
 		return nil, fmt.Errorf("自动迁移失败: %w", err)
 	}

@@ -197,3 +197,42 @@ export const statsApi = {
   get: () =>
     api.get<any, ApiResponse>('/stats'),
 }
+
+// 版本管理
+export const versionApi = {
+  getSystemInfo: () =>
+    api.get<any, ApiResponse>('/versions/system'),
+
+  getComponentVersion: (component: string) =>
+    api.get<any, ApiResponse>(`/versions/components/${component}`),
+
+  updateComponentVersion: (data: {
+    component: string
+    version: string
+    build_time?: string
+    git_commit?: string
+    git_branch?: string
+    description?: string
+  }) =>
+    api.post<any, ApiResponse>('/versions/components', data),
+
+  getComponentHistory: (component: string, limit?: number) =>
+    api.get<any, ApiResponse>(`/versions/components/${component}/history`, {
+      params: { limit },
+    }),
+
+  checkCompatibility: (version: string) =>
+    api.get<any, ApiResponse>(`/versions/compatibility/${version}`),
+
+  listCompatibilityConfigs: () =>
+    api.get<any, ApiResponse>('/versions/compatibility'),
+
+  createCompatibilityConfig: (data: {
+    backend_version: string
+    min_frontend_version: string
+    min_node_client_version: string
+    min_license_center_version: string
+    description?: string
+  }) =>
+    api.post<any, ApiResponse>('/versions/compatibility', data),
+}

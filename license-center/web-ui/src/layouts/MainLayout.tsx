@@ -11,6 +11,7 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
+  CodeOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth'
@@ -70,6 +71,11 @@ export default function MainLayout() {
       key: '/logs',
       icon: <FileTextOutlined />,
       label: '验证日志',
+    },
+    {
+      key: '/versions',
+      icon: <CodeOutlined />,
+      label: '版本管理',
     },
   ]
 
@@ -149,7 +155,7 @@ export default function MainLayout() {
           color: 'rgba(255,255,255,0.45)',
           fontSize: 12,
         }}>
-          v0.2.0
+          v1.0.0
         </div>
       </Sider>
 

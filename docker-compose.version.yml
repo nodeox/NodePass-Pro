@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # 授权中心（版本管理中心）
+  license-center:
+    build:
+      context: ./license-center
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-1.0.0}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_BRANCH: ${GIT_BRANCH:-main}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: nodepass-license-center
+    ports:
+      - "8090:8090"
+    environment:
+      - LICENSE_CENTER_URL=http://license-center:8090
+      - VERSION_REPORT_ENABLED=true
+    volumes:
+      - ./license-center/data:/app/data
+      - ./license-center/configs:/app/configs
+    networks:
+      - nodepass-network
+    restart: unless-stopped
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-1.0.0}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_BRANCH: ${GIT_BRANCH:-main}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: nodepass-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - LICENSE_CENTER_URL=http://license-center:8090
+      - VERSION_REPORT_ENABLED=true
+    depends_on:
+      - license-center
+    networks:
+      - nodepass-network
+    restart: unless-stopped
+
+  # 前端应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_VERSION: ${VERSION:-1.0.0}
+        VITE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        VITE_GIT_BRANCH: ${GIT_BRANCH:-main}
+        VITE_BUILD_TIME: ${BUILD_TIME:-unknown}
+        VITE_LICENSE_CENTER_URL: http://license-center:8090
+    container_name: nodepass-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+      - license-center
+    networks:
+      - nodepass-network
+    restart: unless-stopped
+
+  # 节点客户端（示例）
+  node-client:
+    build:
+      context: ./nodeclient
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-1.0.0}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_BRANCH: ${GIT_BRANCH:-main}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: nodepass-node-client
+    environment:
+      - LICENSE_CENTER_URL=http://license-center:8090
+      - VERSION_REPORT_ENABLED=true
+    depends_on:
+      - license-center
+    networks:
+      - nodepass-network
+    restart: unless-stopped
+
+networks:
+  nodepass-network:
+    driver: bridge
+
+volumes:
+  license-data:

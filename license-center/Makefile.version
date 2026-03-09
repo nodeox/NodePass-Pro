@@ -1,0 +1,151 @@
+# Makefile for NodePass License Center with Version Management
+
+# 版本信息
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%d %H:%M:%S UTC')
+GO_VERSION ?= $(shell go version | awk '{print $$3}')
+
+# 构建标志
+LDFLAGS := -X 'nodepass-license-center/pkg/version.Version=$(VERSION)' \
+           -X 'nodepass-license-center/pkg/version.GitCommit=$(GIT_COMMIT)' \
+           -X 'nodepass-license-center/pkg/version.GitBranch=$(GIT_BRANCH)' \
+           -X 'nodepass-license-center/pkg/version.BuildTime=$(BUILD_TIME)'
+
+# 输出目录
+BUILD_DIR := build
+BINARY_NAME := license-center
+
+.PHONY: all
+all: build
+
+.PHONY: version
+version:
+	@echo "Version:    $(VERSION)"
+	@echo "Git Commit: $(GIT_COMMIT)"
+	@echo "Git Branch: $(GIT_BRANCH)"
+	@echo "Build Time: $(BUILD_TIME)"
+	@echo "Go Version: $(GO_VERSION)"
+
+.PHONY: build
+build: version
+	@echo "Building $(BINARY_NAME)..."
+	@mkdir -p $(BUILD_DIR)
+	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) cmd/server/main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+
+.PHONY: build-linux
+build-linux: version
+	@echo "Building $(BINARY_NAME) for Linux..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 cmd/server/main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64"
+
+.PHONY: build-darwin
+build-darwin: version
+	@echo "Building $(BINARY_NAME) for macOS..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 cmd/server/main.go
+	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 cmd/server/main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-darwin-*"
+
+.PHONY: build-windows
+build-windows: version
+	@echo "Building $(BINARY_NAME) for Windows..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe cmd/server/main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe"
+
+.PHONY: build-all
+build-all: build-linux build-darwin build-windows
+
+.PHONY: docker-build
+docker-build: version
+	@echo "Building Docker image..."
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg GIT_BRANCH=$(GIT_BRANCH) \
+		--build-arg BUILD_TIME="$(BUILD_TIME)" \
+		-t nodepass-license-center:$(VERSION) \
+		-t nodepass-license-center:latest \
+		.
+	@echo "Docker image built: nodepass-license-center:$(VERSION)"
+
+.PHONY: run
+run: build
+	@echo "Running $(BINARY_NAME)..."
+	$(BUILD_DIR)/$(BINARY_NAME) --config configs/config.yaml
+
+.PHONY: dev
+dev:
+	@echo "Running in development mode..."
+	go run cmd/server/main.go --config configs/config.yaml
+
+.PHONY: test
+test:
+	@echo "Running tests..."
+	go test -v ./...
+
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	rm -rf $(BUILD_DIR)
+	rm -f data/*.db
+	@echo "Clean complete"
+
+.PHONY: install-deps
+install-deps:
+	@echo "Installing dependencies..."
+	go mod download
+	go mod tidy
+	cd web-ui && npm install
+
+.PHONY: web-build
+web-build:
+	@echo "Building web UI..."
+	cd web-ui && npm run build
+
+.PHONY: web-dev
+web-dev:
+	@echo "Running web UI in development mode..."
+	cd web-ui && npm run dev
+
+.PHONY: report-version
+report-version:
+	@echo "Reporting version to license center..."
+	@curl -X POST http://localhost:8090/api/v1/versions/components \
+		-H "Content-Type: application/json" \
+		-d '{"component":"license_center","version":"$(VERSION)","git_commit":"$(GIT_COMMIT)","git_branch":"$(GIT_BRANCH)","build_time":"$(BUILD_TIME)","description":"Manual report"}' \
+		|| echo "Failed to report version (is the server running?)"
+
+.PHONY: help
+help:
+	@echo "NodePass License Center - Makefile Commands"
+	@echo ""
+	@echo "Build Commands:"
+	@echo "  make build          - Build for current platform"
+	@echo "  make build-linux    - Build for Linux"
+	@echo "  make build-darwin   - Build for macOS"
+	@echo "  make build-windows  - Build for Windows"
+	@echo "  make build-all      - Build for all platforms"
+	@echo "  make docker-build   - Build Docker image"
+	@echo ""
+	@echo "Run Commands:"
+	@echo "  make run            - Build and run"
+	@echo "  make dev            - Run in development mode"
+	@echo ""
+	@echo "Web UI Commands:"
+	@echo "  make web-build      - Build web UI"
+	@echo "  make web-dev        - Run web UI in dev mode"
+	@echo ""
+	@echo "Version Commands:"
+	@echo "  make version        - Show version info"
+	@echo "  make report-version - Report version to license center"
+	@echo ""
+	@echo "Other Commands:"
+	@echo "  make test           - Run tests"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make install-deps   - Install dependencies"
+	@echo "  make help           - Show this help"

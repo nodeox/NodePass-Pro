@@ -9,6 +9,7 @@ import Alerts from './pages/Alerts'
 import Webhooks from './pages/Webhooks'
 import Tags from './pages/Tags'
 import Logs from './pages/Logs'
+import Versions from './pages/Versions'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore()
@@ -35,6 +36,7 @@ function App() {
         <Route path="webhooks" element={<Webhooks />} />
         <Route path="tags" element={<Tags />} />
         <Route path="logs" element={<Logs />} />
+        <Route path="versions" element={<Versions />} />
       </Route>
     </Routes>
   )

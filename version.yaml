@@ -1,0 +1,57 @@
+# NodePass-Pro 版本配置文件
+# 所有组件应该从这个文件读取版本信息
+
+# 主版本号
+version: "1.0.0"
+
+# 各组件版本
+components:
+  backend:
+    version: "1.0.0"
+    min_compatible_version: "0.9.0"
+
+  frontend:
+    version: "1.0.0"
+    min_compatible_version: "0.9.0"
+
+  node_client:
+    version: "1.0.0"
+    min_compatible_version: "0.9.0"
+
+  license_center:
+    version: "1.0.0"
+    min_compatible_version: "0.9.0"
+
+# 版本兼容性矩阵
+compatibility:
+  # 后端 1.0.0 的兼容性要求
+  - backend_version: "1.0.0"
+    min_frontend_version: "1.0.0"
+    min_node_client_version: "0.9.0"
+    min_license_center_version: "1.0.0"
+    description: "正式版本 1.0.0"
+
+  # 后端 0.1.0 的兼容性要求
+  - backend_version: "0.1.0"
+    min_frontend_version: "0.1.0"
+    min_node_client_version: "0.1.0"
+    min_license_center_version: "0.2.0"
+    description: "初始版本"
+
+# 更新日志
+changelog:
+  - version: "1.0.0"
+    date: "2026-03-08"
+    changes:
+      - "新增隧道批量导入导出功能"
+      - "新增隧道模板系统"
+      - "新增统一版本管理"
+      - "优化性能和稳定性"
+
+  - version: "0.1.0"
+    date: "2026-01-01"
+    changes:
+      - "初始版本发布"
+      - "基础隧道管理功能"
+      - "节点组管理"
+      - "用户认证和授权"

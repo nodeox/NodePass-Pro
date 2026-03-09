@@ -1,0 +1,93 @@
+name: Version Sync
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  sync-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          GIT_COMMIT=$(git rev-parse HEAD)
+          GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "git_commit=${GIT_COMMIT}" >> $GITHUB_OUTPUT
+          echo "git_branch=${GIT_BRANCH}" >> $GITHUB_OUTPUT
+          echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+
+      - name: Report Backend Version
+        if: contains(github.event.head_commit.modified, 'backend/')
+        run: |
+          curl -X POST "${{ secrets.LICENSE_CENTER_URL }}/api/v1/versions/components" \
+            -H "Authorization: Bearer ${{ secrets.LICENSE_CENTER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "component": "backend",
+              "version": "${{ steps.version.outputs.version }}",
+              "git_commit": "${{ steps.version.outputs.git_commit }}",
+              "git_branch": "${{ steps.version.outputs.git_branch }}",
+              "build_time": "${{ steps.version.outputs.build_time }}",
+              "description": "Auto-synced from GitHub Actions"
+            }'
+
+      - name: Report Frontend Version
+        if: contains(github.event.head_commit.modified, 'frontend/')
+        run: |
+          curl -X POST "${{ secrets.LICENSE_CENTER_URL }}/api/v1/versions/components" \
+            -H "Authorization: Bearer ${{ secrets.LICENSE_CENTER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "component": "frontend",
+              "version": "${{ steps.version.outputs.version }}",
+              "git_commit": "${{ steps.version.outputs.git_commit }}",
+              "git_branch": "${{ steps.version.outputs.git_branch }}",
+              "build_time": "${{ steps.version.outputs.build_time }}",
+              "description": "Auto-synced from GitHub Actions"
+            }'
+
+      - name: Report Node Client Version
+        if: contains(github.event.head_commit.modified, 'nodeclient/')
+        run: |
+          curl -X POST "${{ secrets.LICENSE_CENTER_URL }}/api/v1/versions/components" \
+            -H "Authorization: Bearer ${{ secrets.LICENSE_CENTER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "component": "node_client",
+              "version": "${{ steps.version.outputs.version }}",
+              "git_commit": "${{ steps.version.outputs.git_commit }}",
+              "git_branch": "${{ steps.version.outputs.git_branch }}",
+              "build_time": "${{ steps.version.outputs.build_time }}",
+              "description": "Auto-synced from GitHub Actions"
+            }'
+
+      - name: Report License Center Version
+        if: contains(github.event.head_commit.modified, 'license-center/')
+        run: |
+          curl -X POST "${{ secrets.LICENSE_CENTER_URL }}/api/v1/versions/components" \
+            -H "Authorization: Bearer ${{ secrets.LICENSE_CENTER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "component": "license_center",
+              "version": "${{ steps.version.outputs.version }}",
+              "git_commit": "${{ steps.version.outputs.git_commit }}",
+              "git_branch": "${{ steps.version.outputs.git_branch }}",
+              "build_time": "${{ steps.version.outputs.build_time }}",
+              "description": "Auto-synced from GitHub Actions"
+            }'

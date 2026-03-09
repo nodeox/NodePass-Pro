@@ -20,7 +20,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-var appVersion = "0.2.0"
+var appVersion = "1.0.0"
 
 func main() {
 	var configFile string
@@ -120,6 +120,7 @@ func main() {
 	extensionHandler := handlers.NewExtensionHandler(extensionService, webhookService)
 	monitoringHandler := handlers.NewMonitoringHandler(monitoringService, alertService)
 	domainBindingHandler := handlers.NewDomainBindingHandler(domainBindingService)
+	versionHandler := handlers.NewVersionHandler(db)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -265,6 +266,15 @@ func main() {
 
 		// 日志查询
 		admin.GET("/verify-logs", licenseHandler.ListVerifyLogs)
+
+		// 版本管理
+		admin.GET("/versions/system", versionHandler.GetSystemVersionInfo)
+		admin.GET("/versions/components/:component", versionHandler.GetComponentVersion)
+		admin.POST("/versions/components", versionHandler.UpdateComponentVersion)
+		admin.GET("/versions/components/:component/history", versionHandler.ListComponentVersions)
+		admin.GET("/versions/compatibility/:version", versionHandler.CheckCompatibility)
+		admin.GET("/versions/compatibility", versionHandler.ListCompatibilityConfigs)
+		admin.POST("/versions/compatibility", versionHandler.CreateCompatibilityConfig)
 	}
 
 	srv := &http.Server{
