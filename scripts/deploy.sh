@@ -10,7 +10,7 @@ FRONTEND_DOMAIN=""
 BACKEND_DOMAIN=""
 EMAIL=""
 DOWN=false
-NO_BUILD=false
+NO_BUILD=true
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
 AUTO_BUILD_NODECLIENT=true
@@ -107,7 +107,8 @@ NodePass Pro 一键部署脚本
   --email <邮箱>                  Caddy ACME 邮箱（可选）
   --caddy-http-port <端口>        Caddy HTTP 端口，默认 80
   --caddy-https-port <端口>       Caddy HTTPS 端口，默认 443
-  --no-build                      启动时不执行镜像构建
+  --build-image                   启动时强制本地构建镜像（默认关闭，优先使用预构建镜像）
+  --no-build                      兼容参数（当前默认即不构建镜像）
   --skip-nodeclient-build         跳过 nodeclient 二进制自动构建
   --license-key <授权码>          授权码（非 down 模式必填）
   --machine-id <ID>               指定机器标识（可选，默认自动检测）
@@ -302,6 +303,10 @@ parse_args() {
         ;;
       --no-build)
         NO_BUILD=true
+        shift
+        ;;
+      --build-image)
+        NO_BUILD=false
         shift
         ;;
       --skip-nodeclient-build)
@@ -507,7 +512,11 @@ main() {
   fi
 
   local up_args=("-d")
+  if [[ "$NO_BUILD" == true ]]; then
+    log_info "使用预构建镜像模式（默认）。"
+  fi
   if [[ "$NO_BUILD" == false ]]; then
+    log_warn "已启用本地构建镜像模式（--build-image）。"
     up_args+=("--build")
   fi
 
