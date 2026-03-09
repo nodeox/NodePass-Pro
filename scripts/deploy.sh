@@ -30,6 +30,8 @@ BACKEND_LICENSE_FAIL_OPEN="${BACKEND_LICENSE_FAIL_OPEN:-false}"
 BACKEND_LICENSE_OFFLINE_GRACE_SECONDS="${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS:-600}"
 BACKEND_LICENSE_DOMAIN="${BACKEND_LICENSE_DOMAIN:-}"
 BACKEND_LICENSE_SITE_URL="${BACKEND_LICENSE_SITE_URL:-}"
+GHCR_USERNAME="${GHCR_USERNAME:-${NODEPASS_GHCR_USERNAME:-}}"
+GHCR_TOKEN="${GHCR_TOKEN:-${NODEPASS_GHCR_TOKEN:-}}"
 
 log_info() {
   echo "[INFO] $*"
@@ -129,6 +131,8 @@ NodePass Pro 一键部署脚本
   LICENSE_KEY                     授权码（可替代 --license-key）
   BACKEND_LICENSE_DOMAIN          运行时授权域名（启用运行时授权时建议设置）
   BACKEND_LICENSE_SITE_URL        运行时授权站点地址（可选）
+  GHCR_USERNAME                   GHCR 用户名（私有镜像拉取时可选）
+  GHCR_TOKEN                      GHCR Token/PAT（需有 read:packages）
 
 示例:
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX
@@ -137,6 +141,7 @@ NodePass Pro 一键部署脚本
   ./scripts/deploy.sh --license-key NP-XXXX-XXXX --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com
   ./scripts/deploy.sh --build-nodeclient
   ./scripts/deploy.sh --skip-nodeclient-build
+  GHCR_USERNAME=your-user GHCR_TOKEN=ghp_xxx ./scripts/deploy.sh --license-key NP-XXXX-XXXX
   BACKEND_CONFIG_FILE=./backend/configs/config.runtime.yaml ./scripts/deploy.sh --with-caddy --frontend-domain panel.example.com
 EOF
 }
@@ -435,6 +440,54 @@ run_compose() {
     "$@"
 }
 
+ghcr_login_if_configured() {
+  if [[ -z "$GHCR_USERNAME" && -z "$GHCR_TOKEN" ]]; then
+    return
+  fi
+
+  if [[ -z "$GHCR_USERNAME" || -z "$GHCR_TOKEN" ]]; then
+    log_error "GHCR 凭证不完整，请同时设置 GHCR_USERNAME 与 GHCR_TOKEN。"
+    exit 1
+  fi
+
+  log_info "检测到 GHCR 凭证，正在登录 ghcr.io..."
+  if ! printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1; then
+    log_error "GHCR 登录失败，请检查 GHCR_USERNAME/GHCR_TOKEN 是否正确，且 Token 含 read:packages 权限。"
+    exit 1
+  fi
+}
+
+pull_image_or_exit() {
+  local image_ref="$1"
+  local output=""
+  if output="$(docker pull "$image_ref" 2>&1)"; then
+    return
+  fi
+
+  if echo "$output" | grep -qiE "unauthorized|authentication required|denied"; then
+    log_error "镜像拉取鉴权失败: ${image_ref}"
+    if [[ "$image_ref" == ghcr.io/* ]]; then
+      log_error "当前 GHCR 镜像可能为私有仓库。可选修复："
+      log_error "1) 先执行 docker login ghcr.io（私有镜像推荐）；"
+      log_error "2) 将 ghcr.io 对应包改为 public（免登录部署推荐）。"
+    fi
+  else
+    log_error "镜像拉取失败: ${image_ref}"
+  fi
+
+  echo "$output" >&2
+  exit 1
+}
+
+pull_required_images_if_needed() {
+  local backend_image="${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:0.1.0}"
+  local frontend_image="${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:0.1.0}"
+
+  log_info "预检查并拉取核心镜像..."
+  pull_image_or_exit "$backend_image"
+  pull_image_or_exit "$frontend_image"
+}
+
 build_nodeclient_downloads_if_needed() {
   local build_script="${ROOT_DIR}/scripts/build-nodeclient-downloads.sh"
   local auto_build="${AUTO_BUILD_NODECLIENT:-false}"
@@ -524,6 +577,8 @@ main() {
   local up_args=("-d")
   if [[ "$NO_BUILD" == true ]]; then
     log_info "使用预构建镜像模式（默认）。"
+    ghcr_login_if_configured
+    pull_required_images_if_needed
   fi
   if [[ "$NO_BUILD" == false ]]; then
     log_warn "已启用本地构建镜像模式（--build-image）。"
