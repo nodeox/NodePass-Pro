@@ -72,6 +72,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
 > 发布说明（2026-03-08）  
 > 自此版本起，当 `BACKEND_LICENSE_ENABLED=true` 时，必须同时配置 `BACKEND_LICENSE_DOMAIN`（建议同时配置 `BACKEND_LICENSE_SITE_URL`）。若仅开启授权开关而未配置域名，后端会在运行时授权校验中拒绝通过，业务 API 将被拦截。
 
+> 发布说明（2026-03-09）  
+> 自此版本起，`install.sh` 默认采用“最小部署清单”模式（不保留源码）；`scripts/deploy.sh` 默认使用预构建镜像，且默认不构建 `nodeclient` 二进制。如需保留源码请传 `--with-source`，如需本地构建镜像请传 `--build-image`，如需构建 `nodeclient` 请传 `--build-nodeclient`（建议与 `--with-source` 配合）。
+
 卸载：
 
 ```bash
@@ -81,6 +84,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
 脚本能力：
 
 - 自动检测运行环境并安装缺失依赖（`git`/`curl`/`docker`/`docker compose`）；
+- 默认拉取最小部署清单（不保留完整源码）；
 - 交互式问答部署（前端域名、后端域名、数据库类型与连接、Redis、JWT 等）；
 - 交互式创建/更新管理员账号（用户名、邮箱、密码）；
 - 自动生成运行配置：`backend/configs/config.runtime.yaml`；
@@ -97,6 +101,22 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
   --license-key NP-XXXX-XXXX \
   --non-interactive --with-caddy --frontend-domain panel.example.com --backend-domain api.example.com \
   --email admin@example.com --admin-username admin --admin-email admin@example.com --admin-password 'YourStrongPassword'
+```
+
+保留源码部署（可选）：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) \
+  --license-key NP-XXXX-XXXX --license-domain panel.example.com \
+  --non-interactive --with-source
+```
+
+保留源码并构建 nodeclient 下载包（可选）：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/install.sh) \
+  --license-key NP-XXXX-XXXX --license-domain panel.example.com \
+  --non-interactive --with-source --build-nodeclient
 ```
 
 授权接口地址由系统内置，不对外暴露也不支持命令行覆盖。
@@ -155,8 +175,9 @@ cd NodePass-Pro
 - Caddy 默认将前端域名的 `/api/*`、`/ws` 反代到后端，其余路径反代到前端；
 - Caddy 同时暴露节点安装入口：`/nodeclient-install.sh` 与 `/downloads/*`；
 - 节点二进制文件放置说明见：`deploy/nodeclient/README.md`；
-- `scripts/deploy.sh` 默认会自动构建 nodeclient 二进制并生成 `.sha256` 到 `deploy/nodeclient/downloads/`；
-- 如需跳过可使用：`./scripts/deploy.sh --skip-nodeclient-build`；
+- `scripts/deploy.sh` 默认不构建 nodeclient 二进制；
+- 如需构建并生成 `.sha256` 到 `deploy/nodeclient/downloads/`，使用：`./scripts/deploy.sh --build-nodeclient`；
+- 可用 `./scripts/deploy.sh --skip-nodeclient-build` 作为兼容参数显式关闭构建；
 - 可通过 `--backend-domain` 暴露独立后端域名；
 - 可通过环境变量 `BACKEND_CONFIG_FILE` 与 `FRONTEND_BIND` 覆盖后端配置文件和前端监听地址；
 - 请确保域名 DNS 已解析到部署机器，否则自动证书签发会失败。
