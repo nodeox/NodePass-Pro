@@ -31,7 +31,7 @@ class Versions:
 def fixed_verify_url() -> str:
     scheme = "https://"
     host = "key." + "hahaha." + "ooo"
-    path = "/api/v1/license/verify"
+    path = "/api/v1/verify"
     return f"{scheme}{host}{path}"
 
 

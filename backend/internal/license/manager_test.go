@@ -11,7 +11,7 @@ import (
 )
 
 func TestFixedLicenseVerifyURL(t *testing.T) {
-	const expected = "https://key.hahaha.ooo/api/v1/license/verify"
+	const expected = "https://key.hahaha.ooo/api/v1/verify"
 	if got := fixedLicenseVerifyURL(); got != expected {
 		t.Fatalf("verify url mismatch: got=%q want=%q", got, expected)
 	}

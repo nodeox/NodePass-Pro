@@ -27,7 +27,7 @@ const (
 	licenseVerifyHost1  = "key."
 	licenseVerifyHost2  = "hahaha."
 	licenseVerifyHost3  = "ooo"
-	licenseVerifyPath   = "/api/v1/license/verify"
+	licenseVerifyPath   = "/api/v1/verify"
 )
 
 // fixedLicenseVerifyURL 返回旧版授权中心地址（兼容）。
