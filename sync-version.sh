@@ -11,6 +11,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+sedi() {
+    if sed --version >/dev/null 2>&1; then
+        sed -i "$@"
+    else
+        sed -i '' "$@"
+    fi
+}
+
 echo "=========================================="
 echo "NodePass-Pro 版本同步工具"
 echo "=========================================="
@@ -51,8 +59,8 @@ echo -e "${GREEN}✓ VERSION 文件已更新${NC}"
 # 2. 更新 version.yaml
 echo "📝 更新 version.yaml..."
 if [ -f "version.yaml" ]; then
-    sed -i '' "s/^version: .*/version: \"$NEW_VERSION\"/" version.yaml
-    sed -i '' "s/version: \"[0-9.]*\"/version: \"$NEW_VERSION\"/g" version.yaml
+    sedi "s/^version: .*/version: \"$NEW_VERSION\"/" version.yaml
+    sedi "s/version: \"[0-9.]*\"/version: \"$NEW_VERSION\"/g" version.yaml
     echo -e "${GREEN}✓ version.yaml 已更新${NC}"
 else
     echo -e "${YELLOW}⚠ version.yaml 不存在，跳过${NC}"
@@ -61,7 +69,7 @@ fi
 # 3. 更新后端版本
 echo "📝 更新后端版本..."
 if [ -f "backend/internal/version/version.go" ]; then
-    sed -i '' "s/var Version = \"[0-9.]*\"/var Version = \"$NEW_VERSION\"/" backend/internal/version/version.go
+    sedi "s/var Version = \"[0-9.]*\"/var Version = \"$NEW_VERSION\"/" backend/internal/version/version.go
     echo -e "${GREEN}✓ 后端版本已更新${NC}"
 else
     echo -e "${YELLOW}⚠ 后端版本文件不存在${NC}"
@@ -70,7 +78,7 @@ fi
 # 4. 更新前端版本
 echo "📝 更新前端版本..."
 if [ -f "frontend/package.json" ]; then
-    sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+    sedi "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
     echo -e "${GREEN}✓ 前端版本已更新${NC}"
 else
     echo -e "${YELLOW}⚠ 前端 package.json 不存在${NC}"
@@ -79,7 +87,7 @@ fi
 # 5. 更新节点客户端版本
 echo "📝 更新节点客户端版本..."
 if [ -f "nodeclient/internal/agent/agent.go" ]; then
-    sed -i '' "s/var clientVersion = \"[0-9.]*\"/var clientVersion = \"$NEW_VERSION\"/" nodeclient/internal/agent/agent.go
+    sedi "s/var clientVersion = \"[0-9.]*\"/var clientVersion = \"$NEW_VERSION\"/" nodeclient/internal/agent/agent.go
     echo -e "${GREEN}✓ 节点客户端版本已更新${NC}"
 else
     echo -e "${YELLOW}⚠ 节点客户端版本文件不存在${NC}"
@@ -88,10 +96,10 @@ fi
 # 6. 更新授权中心版本
 echo "📝 更新授权中心版本..."
 if [ -f "license-center/web-ui/package.json" ]; then
-    sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW_VERSION\"/" license-center/web-ui/package.json
+    sedi "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW_VERSION\"/" license-center/web-ui/package.json
     echo -e "${GREEN}✓ 授权中心版本已更新${NC}"
 else
-    echo -e "${YELLOW}⚠ 授权中心 package.json 不存在${NC}"
+    echo -e "${YELLOW}⚠ 授权中心 package.json 不存在，跳过（可选组件）${NC}"
 fi
 
 echo ""
@@ -121,7 +129,11 @@ grep "var clientVersion" nodeclient/internal/agent/agent.go | sed 's/.*"\(.*\)".
 echo ""
 
 echo "🔐 授权中心版本："
-grep '"version"' license-center/web-ui/package.json | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "未找到"
+if [ -f "license-center/web-ui/package.json" ]; then
+    grep '"version"' license-center/web-ui/package.json | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "未找到"
+else
+    echo "已移除/不适用"
+fi
 echo ""
 
 echo "=========================================="
@@ -136,7 +148,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     TAG_NAME="v${NEW_VERSION}"
     echo "创建 Git 标签：${TAG_NAME}"
 
-    git add VERSION version.yaml backend/internal/version/version.go frontend/package.json nodeclient/internal/agent/agent.go license-center/web-ui/package.json 2>/dev/null || true
+    git_files=(
+        VERSION
+        version.yaml
+        backend/internal/version/version.go
+        frontend/package.json
+        nodeclient/internal/agent/agent.go
+    )
+    if [ -f "license-center/web-ui/package.json" ]; then
+        git_files+=("license-center/web-ui/package.json")
+    fi
+    git add "${git_files[@]}" 2>/dev/null || true
 
     read -p "请输入标签描述: " TAG_MESSAGE
     if [ -z "$TAG_MESSAGE" ]; then

@@ -31,7 +31,7 @@ services:
       retries: 10
 
   backend:
-    image: "${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:0.1.0}"
+    image: "${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:1.0.1}"
     container_name: nodepass-backend
     depends_on:
       postgres:
@@ -60,13 +60,13 @@ services:
       NODEPASS_LICENSE_VERIFY_INTERVAL: "${BACKEND_LICENSE_VERIFY_INTERVAL:-300}"
       NODEPASS_LICENSE_FAIL_OPEN: "${BACKEND_LICENSE_FAIL_OPEN:-false}"
       NODEPASS_LICENSE_OFFLINE_GRACE_SECONDS: "${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS:-600}"
-      NODEPASS_RUNTIME_VERSION: "${BACKEND_VERSION:-0.1.0}"
+      NODEPASS_RUNTIME_VERSION: "${BACKEND_VERSION:-1.0.1}"
     volumes:
       - ${BACKEND_CONFIG_FILE:-./backend/configs/config.docker.yaml}:/app/configs/config.yaml:ro
     restart: unless-stopped
 
   frontend:
-    image: "${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:0.1.0}"
+    image: "${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:1.0.1}"
     container_name: nodepass-frontend
     depends_on:
       - backend

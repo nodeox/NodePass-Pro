@@ -509,8 +509,8 @@ pull_image_or_exit() {
 }
 
 pull_required_images_if_needed() {
-  local backend_image="${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:0.1.0}"
-  local frontend_image="${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:0.1.0}"
+  local backend_image="${BACKEND_IMAGE:-ghcr.io/nodeox/nodepass-backend:1.0.1}"
+  local frontend_image="${FRONTEND_IMAGE:-ghcr.io/nodeox/nodepass-frontend:1.0.1}"
 
   log_info "预检查并拉取核心镜像..."
   pull_image_or_exit "$backend_image"

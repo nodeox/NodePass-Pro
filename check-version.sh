@@ -47,9 +47,16 @@ echo -e "${BLUE}前端版本：${NC}${FRONTEND_VERSION}"
 NODECLIENT_VERSION=$(grep "var clientVersion" nodeclient/internal/agent/agent.go 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "未找到")
 echo -e "${BLUE}节点客户端版本：${NC}${NODECLIENT_VERSION}"
 
-# 6. 授权中心版本
-LICENSE_VERSION=$(grep '"version"' license-center/web-ui/package.json 2>/dev/null | head -1 | sed 's/.*: "\(.*\)".*/\1/' || echo "未找到")
-echo -e "${BLUE}授权中心版本：${NC}${LICENSE_VERSION}"
+# 6. 授权中心版本（可选组件）
+LICENSE_CENTER_PRESENT=0
+if [ -f "license-center/web-ui/package.json" ]; then
+    LICENSE_CENTER_PRESENT=1
+    LICENSE_VERSION=$(grep '"version"' license-center/web-ui/package.json 2>/dev/null | head -1 | sed 's/.*: "\(.*\)".*/\1/' || echo "未找到")
+    echo -e "${BLUE}授权中心版本：${NC}${LICENSE_VERSION}"
+else
+    LICENSE_VERSION="已移除/不适用"
+    echo -e "${BLUE}授权中心版本：${NC}${LICENSE_VERSION}"
+fi
 
 echo ""
 echo "=========================================="
@@ -75,7 +82,7 @@ if [ "$ROOT_VERSION" != "$NODECLIENT_VERSION" ]; then
     INCONSISTENT=1
 fi
 
-if [ "$ROOT_VERSION" != "$LICENSE_VERSION" ]; then
+if [ "$LICENSE_CENTER_PRESENT" -eq 1 ] && [ "$ROOT_VERSION" != "$LICENSE_VERSION" ]; then
     echo -e "${RED}❌ 根目录版本 ($ROOT_VERSION) 与授权中心版本 ($LICENSE_VERSION) 不一致${NC}"
     INCONSISTENT=1
 fi
@@ -97,7 +104,11 @@ if [ $INCONSISTENT -eq 0 ]; then
     echo "  ✓ 后端服务"
     echo "  ✓ 前端应用"
     echo "  ✓ 节点客户端"
-    echo "  ✓ 授权中心"
+    if [ "$LICENSE_CENTER_PRESENT" -eq 1 ]; then
+        echo "  ✓ 授权中心"
+    else
+        echo "  - 授权中心（已移除/不适用）"
+    fi
     echo ""
     exit 0
 else
