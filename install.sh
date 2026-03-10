@@ -532,6 +532,8 @@ prepare_runtime_bundle() {
     "backend/configs/config.docker.yaml"
     "frontend/VERSION"
     "nodeclient/VERSION"
+    "nodeclient/scripts/install.sh"
+    "deploy/nodeclient/downloads"
     "deploy/caddy/Caddyfile.template"
     "scripts/deploy.sh"
     "scripts/license-verify.py"
@@ -554,6 +556,7 @@ prepare_runtime_bundle() {
   run_fs chmod +x "${INSTALL_DIR}/scripts/deploy.sh"
   run_fs chmod +x "${INSTALL_DIR}/scripts/license-verify.py"
   run_fs chmod +x "${INSTALL_DIR}/scripts/build-nodeclient-downloads.sh"
+  run_fs chmod +x "${INSTALL_DIR}/nodeclient/scripts/install.sh" 2>/dev/null || true
 
   run_fs rm -rf "${tmp_dir}" "${backup_dir}"
   log_info "最小部署清单准备完成。"
