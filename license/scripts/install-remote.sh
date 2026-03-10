@@ -8,6 +8,7 @@ PANEL_PORT="${PANEL_PORT:-8088}"
 PANEL_DOMAIN="${PANEL_DOMAIN:-}"
 ACME_EMAIL="${ACME_EMAIL:-}"
 DEPLOY_WITH_BUILD="${DEPLOY_WITH_BUILD:-false}"
+AUTO_BUILD_FALLBACK="${AUTO_BUILD_FALLBACK:-true}"
 BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME:-admin}"
 BOOTSTRAP_ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
 BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD:-}"
@@ -384,8 +385,18 @@ if [[ "${DEPLOY_WITH_BUILD}" == "true" ]]; then
 else
   log_info "当前为镜像部署模式（默认）。"
   log_info "正在拉取镜像: ${BACKEND_IMAGE:-nodepass/license-backend:latest} / ${FRONTEND_IMAGE:-nodepass/license-frontend:latest}"
-  docker_compose "${compose_args[@]}" pull
-  docker_compose "${compose_args[@]}" up -d --no-build
+  if docker_compose "${compose_args[@]}" pull; then
+    docker_compose "${compose_args[@]}" up -d --no-build
+  else
+    if [[ "${AUTO_BUILD_FALLBACK}" == "true" ]]; then
+      log_warn "镜像拉取失败，自动回退到源码编译部署（AUTO_BUILD_FALLBACK=true）。"
+      docker_compose "${compose_args[@]}" up -d --build
+    else
+      log_error "镜像拉取失败，且已禁用自动回退（AUTO_BUILD_FALLBACK=false）。"
+      log_error "请检查镜像仓库权限，或设置 DEPLOY_WITH_BUILD=true 进行源码编译部署。"
+      exit 1
+    fi
+  fi
 fi
 docker_compose "${compose_args[@]}" ps
 

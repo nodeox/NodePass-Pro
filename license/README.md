@@ -187,6 +187,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/lic
   - 自动处理 docker 权限（必要时使用 `sudo docker`）
   - 自动尝试放行防火墙端口（`ufw` / `firewalld`）
 - 部署默认使用“镜像拉取模式”（`pull + --no-build`），不会在服务器本地编译。
+- 当镜像拉取失败时，会自动回退到源码编译部署（默认开启）。
 - 如需改为源码编译模式，可设置：`DEPLOY_WITH_BUILD=true`
 - 当你填写域名时，会自动启用 Caddy（80/443）并自动申请/续期 HTTPS 证书。
 
@@ -199,6 +200,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/lic
 - `PANEL_DOMAIN`（可直接预设域名，跳过输入）
 - `ACME_EMAIL`（可直接预设证书邮箱）
 - `DEPLOY_WITH_BUILD`（默认 `false`；为 `true` 时启用本地编译部署）
+- `AUTO_BUILD_FALLBACK`（默认 `true`；镜像拉取失败自动回退源码编译）
 
 ## 已完成验证
 
