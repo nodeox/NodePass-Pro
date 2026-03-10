@@ -420,6 +420,14 @@ config_check_interval: 60
 traffic_report_interval: 60
 debug_mode: ${DEBUG_MODE}
 auto_start: true
+license_enabled: false
+license_verify_url: ""
+license_key: ""
+license_machine_id: ""
+license_product: "nodeclient"
+license_channel: "stable"
+license_timeout: 10
+license_fail_open: false
 CONFIG
 
   if [[ -n "${EGRESS_INTERFACE}" ]]; then

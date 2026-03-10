@@ -28,6 +28,11 @@ BACKEND_LICENSE_ENABLED="${BACKEND_LICENSE_ENABLED:-}"
 BACKEND_LICENSE_VERIFY_INTERVAL="${BACKEND_LICENSE_VERIFY_INTERVAL:-300}"
 BACKEND_LICENSE_FAIL_OPEN="${BACKEND_LICENSE_FAIL_OPEN:-false}"
 BACKEND_LICENSE_OFFLINE_GRACE_SECONDS="${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS:-600}"
+BACKEND_LICENSE_VERIFY_URL="${BACKEND_LICENSE_VERIFY_URL:-}"
+BACKEND_LICENSE_PRODUCT="${BACKEND_LICENSE_PRODUCT:-backend}"
+BACKEND_LICENSE_CHANNEL="${BACKEND_LICENSE_CHANNEL:-stable}"
+BACKEND_LICENSE_CLIENT_VERSION="${BACKEND_LICENSE_CLIENT_VERSION:-}"
+BACKEND_LICENSE_REQUIRE_DOMAIN="${BACKEND_LICENSE_REQUIRE_DOMAIN:-false}"
 BACKEND_LICENSE_DOMAIN="${BACKEND_LICENSE_DOMAIN:-}"
 BACKEND_LICENSE_SITE_URL="${BACKEND_LICENSE_SITE_URL:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-${NODEPASS_GHCR_USERNAME:-}}"
@@ -127,6 +132,7 @@ NodePass Pro 一键部署脚本
   --build-nodeclient              显式开启 nodeclient 二进制构建（默认关闭）
   --skip-nodeclient-build         跳过 nodeclient 二进制构建（兼容参数）
   --license-key <授权码>          授权码（非 down 模式必填）
+  --license-server <URL>          覆盖授权校验接口地址（可选）
   --machine-id <ID>               指定机器标识（可选，默认自动检测）
   --license-domain <域名>         运行时授权域名（启用运行时授权时建议设置）
   --license-site-url <URL>        运行时授权站点地址（可选）
@@ -142,6 +148,11 @@ NodePass Pro 一键部署脚本
   FRONTEND_VERSION                覆盖前端构建版本（默认读取 frontend/VERSION）
   JWT_SECRET                      后端 JWT 密钥（必填，建议使用 openssl rand -base64 48 生成）
   LICENSE_KEY                     授权码（可替代 --license-key）
+  BACKEND_LICENSE_VERIFY_URL      统一校验接口地址（例如 http://127.0.0.1:8091/api/v1/verify）
+  BACKEND_LICENSE_PRODUCT         校验产品标识（默认 backend）
+  BACKEND_LICENSE_CHANNEL         校验通道（默认 stable）
+  BACKEND_LICENSE_CLIENT_VERSION  显式上报版本（可选）
+  BACKEND_LICENSE_REQUIRE_DOMAIN  是否强制要求域名（默认 false）
   BACKEND_LICENSE_DOMAIN          运行时授权域名（启用运行时授权时建议设置）
   BACKEND_LICENSE_SITE_URL        运行时授权站点地址（可选）
   GHCR_USERNAME                   GHCR 用户名（私有镜像拉取时可选）
@@ -342,7 +353,8 @@ parse_args() {
         shift 2
         ;;
       --license-server)
-        # 授权地址已固化，此参数仅做兼容占位。
+        # 兼容旧参数：用于覆盖统一校验地址。
+        BACKEND_LICENSE_VERIFY_URL="${2:-}"
         shift 2
         ;;
       --machine-id)
@@ -390,15 +402,11 @@ verify_license_or_exit() {
   require_command python3
   local machine_id
   machine_id="$(detect_machine_id)"
-  if [[ -z "$BACKEND_LICENSE_DOMAIN" ]]; then
-    log_error "授权校验需要 domain，请通过 --license-domain（推荐）或 --frontend-domain/--backend-domain 提供。"
-    exit 1
-  fi
-
   log_info "开始授权校验..."
   local verify_output
   local verify_cmd=(
     python3 "$verify_script"
+    --verify-url "${BACKEND_LICENSE_VERIFY_URL}" \
     --license-key "$LICENSE_KEY" \
     --machine-id "$machine_id" \
     --action "$LICENSE_ACTION" \
@@ -406,9 +414,12 @@ verify_license_or_exit() {
     --backend-version "$BACKEND_VERSION" \
     --frontend-version "$FRONTEND_VERSION" \
     --nodeclient-version "$NODECLIENT_VERSION" \
-    --domain "$BACKEND_LICENSE_DOMAIN" \
+    --channel "$BACKEND_LICENSE_CHANNEL" \
     --timeout 20
   )
+  if [[ -n "$BACKEND_LICENSE_DOMAIN" ]]; then
+    verify_cmd+=(--domain "$BACKEND_LICENSE_DOMAIN")
+  fi
   if [[ -n "$BACKEND_LICENSE_SITE_URL" ]]; then
     verify_cmd+=(--site-url "$BACKEND_LICENSE_SITE_URL")
   fi
@@ -446,6 +457,11 @@ run_compose() {
     BACKEND_LICENSE_VERIFY_INTERVAL="${BACKEND_LICENSE_VERIFY_INTERVAL}" \
     BACKEND_LICENSE_FAIL_OPEN="${BACKEND_LICENSE_FAIL_OPEN}" \
     BACKEND_LICENSE_OFFLINE_GRACE_SECONDS="${BACKEND_LICENSE_OFFLINE_GRACE_SECONDS}" \
+    BACKEND_LICENSE_VERIFY_URL="${BACKEND_LICENSE_VERIFY_URL}" \
+    BACKEND_LICENSE_PRODUCT="${BACKEND_LICENSE_PRODUCT}" \
+    BACKEND_LICENSE_CHANNEL="${BACKEND_LICENSE_CHANNEL}" \
+    BACKEND_LICENSE_CLIENT_VERSION="${BACKEND_LICENSE_CLIENT_VERSION}" \
+    BACKEND_LICENSE_REQUIRE_DOMAIN="${BACKEND_LICENSE_REQUIRE_DOMAIN}" \
     BACKEND_LICENSE_DOMAIN="${BACKEND_LICENSE_DOMAIN}" \
     BACKEND_LICENSE_SITE_URL="${BACKEND_LICENSE_SITE_URL}" \
     CADDY_HTTP_PORT="$CADDY_HTTP_PORT" \

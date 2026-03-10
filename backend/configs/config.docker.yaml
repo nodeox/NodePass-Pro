@@ -44,6 +44,11 @@ license:
   enabled: false
   license_key: ""
   machine_id: ""
+  verify_url: ""
+  product: "backend"
+  channel: "stable"
+  client_version: ""
+  require_domain: false
   domain: ""
   site_url: ""
   verify_interval: 300

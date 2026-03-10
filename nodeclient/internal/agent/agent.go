@@ -18,7 +18,7 @@ import (
 	"nodepass-pro/nodeclient/internal/nodepass"
 )
 
-var clientVersion = "1.0.0"
+var clientVersion = "1.0.1"
 
 // Version 返回节点客户端版本号。
 func Version() string {

@@ -103,6 +103,7 @@ func (h *TelegramHandler) Login(c *gin.Context) {
 		writeServiceError(c, verifyErr, "TELEGRAM_LOGIN_FAILED")
 		return
 	}
+	setRefreshTokenCookie(c, loginResult.RefreshToken)
 
 	utils.Success(c, buildTelegramLoginPayload(loginResult, ""))
 }
@@ -156,6 +157,7 @@ func (h *TelegramHandler) SSOLogin(c *gin.Context) {
 		writeServiceError(c, err, "TELEGRAM_SSO_LOGIN_FAILED")
 		return
 	}
+	setRefreshTokenCookie(c, loginResult.RefreshToken)
 
 	utils.Success(c, buildTelegramLoginPayload(loginResult, redirectURI))
 }
@@ -257,12 +259,11 @@ func buildTelegramLoginPayload(result *services.LoginResult, redirectURI string)
 		return gin.H{}
 	}
 	payload := gin.H{
-		"token":         result.AccessToken,
-		"access_token":  result.AccessToken,
-		"refresh_token": result.RefreshToken,
-		"expires_in":    result.ExpiresIn,
-		"token_type":    result.TokenType,
-		"user":          buildTelegramLoginUser(result.User),
+		"token":        result.AccessToken,
+		"access_token": result.AccessToken,
+		"expires_in":   result.ExpiresIn,
+		"token_type":   result.TokenType,
+		"user":         buildTelegramLoginUser(result.User),
 	}
 	trimmedRedirect := strings.TrimSpace(redirectURI)
 	if trimmedRedirect != "" {

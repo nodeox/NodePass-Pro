@@ -58,6 +58,11 @@ LICENSE_KEY="${LICENSE_KEY:-${NODEPASS_LICENSE_KEY:-}}"
 LICENSE_MACHINE_ID=""
 LICENSE_VERIFIED="false"
 LICENSE_VERIFY_RESULT="{}"
+BACKEND_LICENSE_VERIFY_URL="${BACKEND_LICENSE_VERIFY_URL:-${LICENSE_VERIFY_URL:-}}"
+BACKEND_LICENSE_PRODUCT="${BACKEND_LICENSE_PRODUCT:-backend}"
+BACKEND_LICENSE_CHANNEL="${BACKEND_LICENSE_CHANNEL:-stable}"
+BACKEND_LICENSE_CLIENT_VERSION="${BACKEND_LICENSE_CLIENT_VERSION:-}"
+BACKEND_LICENSE_REQUIRE_DOMAIN="${BACKEND_LICENSE_REQUIRE_DOMAIN:-false}"
 LICENSE_ID=""
 LICENSE_CUSTOMER=""
 LICENSE_PLAN=""
@@ -105,6 +110,7 @@ NodePass Pro 远程一键部署引导脚本（自动检测环境 + 交互式部�
   --repo <地址>             仓库地址（默认: https://github.com/nodeox/NodePass-Pro.git）
   --branch <分支>           分支名（默认: main）
   --license-key <授权码>    授权码（非交互模式与升级必填，交互安装可在向导中输入）
+  --license-server <URL>   覆盖授权校验接口地址（可选）
   --license-domain <域名>  授权绑定域名（可选，推荐显式提供）
   --license-site-url <URL> 授权绑定站点地址（可选）
   --machine-id <ID>         指定机器标识（可选，默认自动检测）
@@ -644,10 +650,6 @@ verify_license_or_exit() {
 
   require_license_key
   resolve_license_verify_settings
-  if [[ -z "$LICENSE_VERIFY_DOMAIN" ]]; then
-    log_error "授权校验需要 domain，请通过 --license-domain（推荐）或 --frontend-domain/--backend-domain 提供。"
-    exit 1
-  fi
 
   LICENSE_MACHINE_ID="$(detect_machine_id)"
   load_repo_versions "${INSTALL_DIR}"
@@ -656,6 +658,7 @@ verify_license_or_exit() {
   local verify_output=""
   local verify_cmd=(
     python3 "$verify_script"
+    --verify-url "$BACKEND_LICENSE_VERIFY_URL" \
     --license-key "$LICENSE_KEY" \
     --machine-id "$LICENSE_MACHINE_ID" \
     --action "$ACTION" \
@@ -663,11 +666,14 @@ verify_license_or_exit() {
     --backend-version "$BACKEND_VERSION" \
     --frontend-version "$FRONTEND_VERSION" \
     --nodeclient-version "$NODECLIENT_VERSION" \
+    --channel "$BACKEND_LICENSE_CHANNEL" \
     --branch "$BRANCH" \
     --commit "$REPO_COMMIT" \
-    --domain "$LICENSE_VERIFY_DOMAIN" \
     --timeout 20
   )
+  if [[ -n "$LICENSE_VERIFY_DOMAIN" ]]; then
+    verify_cmd+=(--domain "$LICENSE_VERIFY_DOMAIN")
+  fi
   if [[ -n "$LICENSE_VERIFY_SITE_URL" ]]; then
     verify_cmd+=(--site-url "$LICENSE_VERIFY_SITE_URL")
   fi
@@ -1067,6 +1073,11 @@ run_compose_cmd() {
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
       LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_VERIFY_URL="$BACKEND_LICENSE_VERIFY_URL" \
+      BACKEND_LICENSE_PRODUCT="$BACKEND_LICENSE_PRODUCT" \
+      BACKEND_LICENSE_CHANNEL="$BACKEND_LICENSE_CHANNEL" \
+      BACKEND_LICENSE_CLIENT_VERSION="$BACKEND_LICENSE_CLIENT_VERSION" \
+      BACKEND_LICENSE_REQUIRE_DOMAIN="$BACKEND_LICENSE_REQUIRE_DOMAIN" \
       BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
       BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
       docker compose "${compose_args[@]}" "$@")
@@ -1080,6 +1091,11 @@ run_compose_cmd() {
       LICENSE_MACHINE_ID="$LICENSE_MACHINE_ID" \
       LICENSE_ACTION="$ACTION" \
       LICENSE_VERIFIED="$LICENSE_VERIFIED" \
+      BACKEND_LICENSE_VERIFY_URL="$BACKEND_LICENSE_VERIFY_URL" \
+      BACKEND_LICENSE_PRODUCT="$BACKEND_LICENSE_PRODUCT" \
+      BACKEND_LICENSE_CHANNEL="$BACKEND_LICENSE_CHANNEL" \
+      BACKEND_LICENSE_CLIENT_VERSION="$BACKEND_LICENSE_CLIENT_VERSION" \
+      BACKEND_LICENSE_REQUIRE_DOMAIN="$BACKEND_LICENSE_REQUIRE_DOMAIN" \
       BACKEND_LICENSE_DOMAIN="$LICENSE_VERIFY_DOMAIN" \
       BACKEND_LICENSE_SITE_URL="$LICENSE_VERIFY_SITE_URL" \
       docker compose "${compose_args[@]}" "$@")
@@ -1273,7 +1289,7 @@ parse_args() {
         shift 2
         ;;
       --license-server)
-        # 授权地址已固化，此参数仅做兼容占位。
+        BACKEND_LICENSE_VERIFY_URL="${2:-}"
         shift 2
         ;;
       --machine-id)

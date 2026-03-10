@@ -1,61 +1,74 @@
-# 授权验证接口约定
+# 授权与版本统一校验接口约定
 
-安装脚本在执行正式部署前会调用系统内置的授权校验接口（地址不对外暴露，且不支持参数覆盖）。
+NodePass 的安装脚本、backend 运行时授权、nodeclient 启动校验均可对接统一接口。
 
-## 请求体
+## 接口地址
+
+- 推荐：`POST /api/v1/verify`
+- 示例：`http://127.0.0.1:8091/api/v1/verify`
+- 兼容：旧 `POST /api/v1/license/verify` 仍可使用（backend 已做兼容解析）
+
+## 请求体（统一接口）
 
 ```json
 {
   "license_key": "NP-XXXX-XXXX",
   "machine_id": "7f4b8d...",
-  "domain": "panel.example.com",
-  "site_url": "https://panel.example.com",
-  "action": "install",
-  "versions": {
-    "panel": "0.1.0",
-    "backend": "0.1.0",
-    "frontend": "0.1.0",
-    "nodeclient": "0.1.0"
-  },
-  "branch": "main",
-  "commit": "abc1234"
+  "hostname": "nodepass-backend",
+  "product": "backend",
+  "client_version": "1.0.0",
+  "channel": "stable"
 }
 ```
 
-## 响应体（推荐）
+补充：`domain/site_url/action/versions/branch/commit` 在新接口中为可选兼容字段，传递也不会报错。
+
+## 响应体（统一接口）
 
 ```json
 {
   "success": true,
   "data": {
-    "valid": true,
-    "license_id": "LIC-2026-0001",
-    "customer": "Example Inc",
-    "plan": "enterprise",
-    "expires_at": "2027-03-01T00:00:00Z",
-    "version_policy": {
-      "min_panel_version": "0.1.0",
-      "max_panel_version": "1.9.9",
-      "min_backend_version": "0.1.0",
-      "max_backend_version": "1.9.9",
-      "min_frontend_version": "0.1.0",
-      "max_frontend_version": "1.9.9",
-      "min_nodeclient_version": "0.1.0",
-      "max_nodeclient_version": "1.9.9"
+    "verified": true,
+    "status": "ok",
+    "license": {
+      "valid": true,
+      "license_id": 1,
+      "plan_code": "NP-STD",
+      "customer": "Example Inc",
+      "expires_at": "2027-03-01T00:00:00Z"
     },
-    "message": "ok"
+    "version": {
+      "compatible": true,
+      "status": "upgrade_available",
+      "latest_version": "1.2.0",
+      "message": "建议升级到 1.2.0"
+    }
   }
 }
 ```
 
-说明：
+## backend 实际调用配置
 
-- `data.valid=false` 时，安装脚本会立即终止；
-- 即使接口返回通过，脚本仍会基于 `version_policy` 进行本地二次版本校验；
-- 通过校验后，安装目录会写入 `.nodepass-license` 快照文件。
+对应环境变量（`docker-compose.yml` 已接入）：
 
-## 升级注意（2026-03-08）
+- `BACKEND_LICENSE_VERIFY_URL`
+- `BACKEND_LICENSE_PRODUCT`（默认 `backend`）
+- `BACKEND_LICENSE_CHANNEL`（默认 `stable`）
+- `BACKEND_LICENSE_CLIENT_VERSION`（可选）
+- `BACKEND_LICENSE_REQUIRE_DOMAIN`（默认 `false`）
 
-- 当后端开启运行时授权校验（`BACKEND_LICENSE_ENABLED=true`）时，后端会强制要求可用域名信息；
-- 部署时需保证 `BACKEND_LICENSE_DOMAIN` 与 `BACKEND_LICENSE_SITE_URL` 至少配置一个，建议同时配置两者；
-- 若未配置域名，`/api/v1/license/status` 将显示授权未通过，业务 API 会返回 `403 LICENSE_INVALID`。
+## nodeclient 实际调用配置
+
+`nodeclient/configs/config.yaml` 可选项：
+
+- `license_enabled`
+- `license_verify_url`
+- `license_key`
+- `license_machine_id`
+- `license_product`（默认 `nodeclient`）
+- `license_channel`（默认 `stable`）
+- `license_timeout`
+- `license_fail_open`
+
+当 `license_enabled=true` 时，nodeclient 启动前会执行一次统一校验；失败时启动终止（`license_fail_open=true` 时仅在接口不可达/解析失败场景放行）。

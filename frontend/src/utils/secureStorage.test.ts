@@ -21,16 +21,15 @@ describe('secureStorage', () => {
   it('默认使用 sessionStorage 保存 nodepass-auth', () => {
     setAuthSession({
       accessToken: 'access-1',
-      refreshToken: 'refresh-1',
     })
 
     const raw = sessionStorage.getItem(AUTH_STORAGE_KEY_EXPORT)
     expect(raw).not.toBeNull()
     expect(getStoredToken()).toBe('access-1')
-    expect(getStoredRefreshToken()).toBe('refresh-1')
+    expect(getStoredRefreshToken()).toBeNull()
   })
 
-  it('access token 过期时仅返回 null，不清除 refresh token', () => {
+  it('access token 过期时返回 null，refresh token 始终不暴露给前端', () => {
     sessionStorage.setItem(
       AUTH_STORAGE_KEY_EXPORT,
       JSON.stringify({
@@ -46,7 +45,7 @@ describe('secureStorage', () => {
     )
 
     expect(getStoredToken()).toBeNull()
-    expect(getStoredRefreshToken()).toBe('refresh-keep')
+    expect(getStoredRefreshToken()).toBeNull()
   })
 
   it('migrateOldStorage 会把 localStorage 旧数据迁移到 sessionStorage', () => {
@@ -68,7 +67,7 @@ describe('secureStorage', () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY_EXPORT)).toBeNull()
     expect(sessionStorage.getItem(AUTH_STORAGE_KEY_EXPORT)).not.toBeNull()
     expect(getStoredToken()).toBe('access-old')
-    expect(getStoredRefreshToken()).toBe('refresh-old')
+    expect(getStoredRefreshToken()).toBeNull()
   })
 
   it('clearAuthStorage 会清理 session/local 与 zustand key', () => {

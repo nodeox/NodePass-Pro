@@ -7,6 +7,25 @@ import { useAuthStore } from '../../store/auth'
 import { getErrorMessage } from '../../utils/error'
 import { getHomePathByRole } from '../../utils/route'
 
+const resolveSafeRedirectPath = (target: string): string | null => {
+  const raw = target.trim()
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = new URL(raw, window.location.origin)
+    if (parsed.origin !== window.location.origin) {
+      return null
+    }
+    if (!parsed.pathname.startsWith('/')) {
+      return null
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return null
+  }
+}
+
 const TelegramCallback = () => {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -30,13 +49,12 @@ const TelegramCallback = () => {
         })
         setAuthSession({
           accessToken: result.token,
-          refreshToken: result.refreshToken ?? null,
           expiresIn: result.expiresIn,
           user: result.user,
         })
-        const redirectTarget = (result.redirect_uri ?? '').trim()
-        if (redirectTarget && redirectTarget.startsWith('/')) {
-          navigate(redirectTarget, { replace: true })
+        const safeRedirectPath = resolveSafeRedirectPath(result.redirect_uri ?? '')
+        if (safeRedirectPath) {
+          navigate(safeRedirectPath, { replace: true })
           return
         }
         navigate(getHomePathByRole(result.user?.role), { replace: true })

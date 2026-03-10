@@ -21,7 +21,8 @@ type TelegramWidgetUser = Record<string, unknown>
 
 declare global {
   interface Window {
-    [key: string]: ((user: TelegramWidgetUser) => void) | unknown
+    __nodepassTelegramAuthBridge?: (user: TelegramWidgetUser) => void
+    __nodepassTelegramAuthHandler?: (user: TelegramWidgetUser) => Promise<void> | void
   }
 }
 
@@ -69,7 +70,6 @@ const Login = () => {
     }
 
     const widgetContainer = widgetContainerRef.current
-    const callbackName = `onTelegramAuth_${Date.now()}`
     const handleTelegramAuth = async (telegramUser: TelegramWidgetUser) => {
       try {
         const result = (await telegramApi.login(
@@ -82,7 +82,6 @@ const Login = () => {
         })
         setAuthSession({
           accessToken: result.token,
-          refreshToken: result.refreshToken ?? null,
           expiresIn: result.expiresIn,
           user: result.user,
         })
@@ -93,7 +92,18 @@ const Login = () => {
       }
     }
 
-    window[callbackName] = handleTelegramAuth
+    window.__nodepassTelegramAuthHandler = handleTelegramAuth
+    if (!window.__nodepassTelegramAuthBridge) {
+      window.__nodepassTelegramAuthBridge = (telegramUser: TelegramWidgetUser) => {
+        if (!telegramUser || typeof telegramUser !== 'object') {
+          return
+        }
+        const handler = window.__nodepassTelegramAuthHandler
+        if (typeof handler === 'function') {
+          void handler(telegramUser)
+        }
+      }
+    }
 
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -102,14 +112,16 @@ const Login = () => {
     script.setAttribute('data-size', 'large')
     script.setAttribute('data-userpic', 'false')
     script.setAttribute('data-request-access', 'write')
-    script.setAttribute('data-onauth', `${callbackName}(user)`)
+    script.setAttribute('data-onauth', '__nodepassTelegramAuthBridge(user)')
 
     widgetContainer.replaceChildren()
     widgetContainer.appendChild(script)
 
     return () => {
       widgetContainer.replaceChildren()
-      delete window[callbackName]
+      if (window.__nodepassTelegramAuthHandler === handleTelegramAuth) {
+        delete window.__nodepassTelegramAuthHandler
+      }
     }
   }, [navigate, telegramBotUsername])
 

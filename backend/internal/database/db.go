@@ -121,6 +121,9 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	if err := seedDefaultVIPLevels(db); err != nil {
 		return nil, fmt.Errorf("初始化默认 VIP 等级失败: %w", err)
 	}
+	if err := seedSystemRoles(db); err != nil {
+		return nil, fmt.Errorf("初始化默认角色失败: %w", err)
+	}
 
 	DB = db
 	zap.L().Info("数据库初始化完成", zap.String("type", cfg.Type))
@@ -131,6 +134,8 @@ func InitDB(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.User{},
+		&models.Role{},
+		&models.RolePermission{},
 		&models.UserPermission{},
 		&models.RefreshToken{},
 		&models.Alert{},
@@ -231,6 +236,38 @@ func seedDefaultVIPLevels(db *gorm.DB) error {
 			Columns:   []clause.Column{{Name: "level"}},
 			DoNothing: true,
 		}).Create(&level).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func seedSystemRoles(db *gorm.DB) error {
+	defaultRoles := []models.Role{
+		{
+			Code:      "admin",
+			Name:      "管理员",
+			IsSystem:  true,
+			IsEnabled: true,
+		},
+		{
+			Code:      "user",
+			Name:      "普通用户",
+			IsSystem:  true,
+			IsEnabled: true,
+		},
+	}
+
+	for _, role := range defaultRoles {
+		if err := db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "code"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"name":       role.Name,
+				"is_system":  role.IsSystem,
+				"is_enabled": role.IsEnabled,
+			}),
+		}).Create(&role).Error; err != nil {
 			return err
 		}
 	}

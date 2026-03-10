@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// SessionInfo 登录会话信息（脱敏）。
+type SessionInfo struct {
+	ID         uint       `json:"id"`
+	IPAddress  string     `json:"ip_address"`
+	UserAgent  string     `json:"user_agent"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	IsRevoked  bool       `json:"is_revoked"`
+	IsExpired  bool       `json:"is_expired"`
+	IsActive   bool       `json:"is_active"`
+	IsCurrent  bool       `json:"is_current"`
+}
 
 // generateAccessToken 生成访问令牌（短期，30分钟）
 func generateAccessToken(userID uint, role string) (string, int, error) {
@@ -161,4 +176,97 @@ func (s *AuthService) RevokeRefreshToken(refreshToken string) error {
 // RevokeAllUserTokens 撤销用户的所有 refresh tokens
 func (s *AuthService) RevokeAllUserTokens(userID uint) error {
 	return s.refreshTokenService.RevokeUserRefreshTokens(userID)
+}
+
+// ListUserSessions 列出当前用户所有登录会话。
+func (s *AuthService) ListUserSessions(userID uint, currentRefreshToken string) ([]SessionInfo, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+
+	tokens, err := s.refreshTokenService.GetUserRefreshTokens(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	currentHash := hashRefreshToken(currentRefreshToken)
+	result := make([]SessionInfo, 0, len(tokens))
+	for _, item := range tokens {
+		if item == nil {
+			continue
+		}
+		isExpired := item.IsExpired()
+		isRevoked := item.IsRevoked
+		result = append(result, SessionInfo{
+			ID:         item.ID,
+			IPAddress:  item.IPAddress,
+			UserAgent:  item.UserAgent,
+			CreatedAt:  item.CreatedAt,
+			LastUsedAt: item.LastUsedAt,
+			ExpiresAt:  item.ExpiresAt,
+			IsRevoked:  isRevoked,
+			IsExpired:  isExpired,
+			IsActive:   !isRevoked && !isExpired,
+			IsCurrent:  currentHash != "" && currentHash == item.TokenHash,
+		})
+	}
+	return result, nil
+}
+
+// RevokeUserSession 按会话 ID 撤销当前用户的会话。
+func (s *AuthService) RevokeUserSession(userID uint, sessionID uint) error {
+	if userID == 0 || sessionID == 0 {
+		return fmt.Errorf("%w: 参数无效", ErrInvalidParams)
+	}
+
+	var token models.RefreshToken
+	if err := s.db.Where("id = ? AND user_id = ?", sessionID, userID).First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: 会话不存在", ErrNotFound)
+		}
+		return fmt.Errorf("查询会话失败: %w", err)
+	}
+
+	if token.IsRevoked {
+		return nil
+	}
+	if err := s.db.Model(&models.RefreshToken{}).Where("id = ?", token.ID).Update("is_revoked", true).Error; err != nil {
+		return fmt.Errorf("撤销会话失败: %w", err)
+	}
+	return nil
+}
+
+// RevokeCurrentSession 撤销当前用户指定的 refresh token 会话（用于当前会话下线）。
+func (s *AuthService) RevokeCurrentSession(userID uint, refreshToken string) error {
+	if userID == 0 {
+		return fmt.Errorf("%w: 用户 ID 无效", ErrInvalidParams)
+	}
+	tokenHash := hashRefreshToken(refreshToken)
+	if tokenHash == "" {
+		return nil
+	}
+
+	var token models.RefreshToken
+	if err := s.db.Where("user_id = ? AND token_hash = ?", userID, tokenHash).First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("查询当前会话失败: %w", err)
+	}
+	if token.IsRevoked {
+		return nil
+	}
+	if err := s.db.Model(&models.RefreshToken{}).Where("id = ?", token.ID).Update("is_revoked", true).Error; err != nil {
+		return fmt.Errorf("撤销当前会话失败: %w", err)
+	}
+	return nil
+}
+
+func hashRefreshToken(refreshToken string) string {
+	token := strings.TrimSpace(refreshToken)
+	if token == "" {
+		return ""
+	}
+	hash := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", hash)
 }

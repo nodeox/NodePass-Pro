@@ -26,6 +26,7 @@ export {
 import type {
   AdminUserListQuery,
   AdminUserListResult,
+  AdminUserDetailResult,
   AnnouncementRecord,
   ApiErrorResponse,
   ApiSuccessResponse,
@@ -43,6 +44,11 @@ import type {
   PaginationQuery,
   PaginationResult,
   RegisterPayload,
+  RoleListResult,
+  RoleRecord,
+  CreateRolePayload,
+  UpdateRolePayload,
+  UpdateRolePermissionsPayload,
   SendEmailChangeCodePayload,
   SendEmailChangeCodeResult,
   TelegramSSOLoginResult,
@@ -221,14 +227,9 @@ const flushQueue = (error: unknown, token: string | null): void => {
 }
 
 const requestRefreshToken = async (): Promise<string> => {
-  const refreshToken = getStoredRefreshToken()
-  if (!refreshToken) {
-    throw new Error('缺少刷新凭证')
-  }
-
   const response = await axios.post<ApiSuccessResponse<LoginResult>>(
     '/api/v1/auth/refresh/v2',
-    { refresh_token: refreshToken },
+    {},
     {
       withCredentials: true,
     },
@@ -243,7 +244,6 @@ const requestRefreshToken = async (): Promise<string> => {
 
   setAuthSession({
     accessToken: nextToken,
-    refreshToken: normalized.refreshToken ?? refreshToken,
     expiresIn: normalized.expiresIn,
     user: normalized.user,
   })
@@ -353,18 +353,10 @@ export const authApi = {
       .then(unwrapData),
 
   refresh: () =>
-    (() => {
-      const refreshToken = getStoredRefreshToken()
-      if (!refreshToken) {
-        return Promise.reject(new Error('缺少刷新凭证'))
-      }
-      return apiClient
-        .post<ApiSuccessResponse<LoginResult>>('/auth/refresh/v2', {
-          refresh_token: refreshToken,
-        })
-        .then(unwrapData)
-        .then(normalizeLoginResult)
-    })(),
+    apiClient
+      .post<ApiSuccessResponse<LoginResult>>('/auth/refresh/v2', {})
+      .then(unwrapData)
+      .then(normalizeLoginResult),
 
   revokeAllTokens: () =>
     apiClient
@@ -440,7 +432,12 @@ export const userAdminApi = {
       .get<ApiSuccessResponse<User>>(`/users/${userID}`)
       .then(unwrapData),
 
-  updateRole: (userID: number, role: 'admin' | 'user') =>
+  getUserDetail: (userID: number) =>
+    apiClient
+      .get<ApiSuccessResponse<AdminUserDetailResult>>(`/users/${userID}/detail`)
+      .then(unwrapData),
+
+  updateRole: (userID: number, role: string) =>
     apiClient
       .put<ApiSuccessResponse<User>>(`/users/${userID}/role`, { role })
       .then(unwrapData),
@@ -448,6 +445,43 @@ export const userAdminApi = {
   updateStatus: (userID: number, status: string) =>
     apiClient
       .put<ApiSuccessResponse<User>>(`/users/${userID}/status`, { status })
+      .then(unwrapData),
+}
+
+export const roleApi = {
+  list: (params?: { include_disabled?: boolean; keyword?: string }) =>
+    apiClient
+      .get<ApiSuccessResponse<RoleListResult>>('/roles', { params })
+      .then(unwrapData),
+
+  get: (roleID: number) =>
+    apiClient
+      .get<ApiSuccessResponse<RoleRecord>>(`/roles/${roleID}`)
+      .then(unwrapData),
+
+  create: (payload: CreateRolePayload) =>
+    apiClient
+      .post<ApiSuccessResponse<RoleRecord>>('/roles', payload)
+      .then(unwrapData),
+
+  update: (roleID: number, payload: UpdateRolePayload) =>
+    apiClient
+      .put<ApiSuccessResponse<RoleRecord>>(`/roles/${roleID}`, payload)
+      .then(unwrapData),
+
+  updatePermissions: (roleID: number, payload: UpdateRolePermissionsPayload) =>
+    apiClient
+      .put<ApiSuccessResponse<RoleRecord>>(`/roles/${roleID}/permissions`, payload)
+      .then(unwrapData),
+
+  remove: (roleID: number) =>
+    apiClient
+      .delete<ApiSuccessResponse<null>>(`/roles/${roleID}`)
+      .then(unwrapData),
+
+  permissions: () =>
+    apiClient
+      .get<ApiSuccessResponse<{ list: string[]; total: number }>>('/roles/permissions')
       .then(unwrapData),
 }
 

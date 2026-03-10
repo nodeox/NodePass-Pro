@@ -2,11 +2,10 @@
  * 安全的 Token 存储模块
  *
  * 安全特性：
- * 1. 使用 sessionStorage 代替 localStorage（关闭浏览器后自动清除）
- * 2. 支持内存存储模式（最高安全级别）
- * 3. Token 加密存储（可选）
- * 4. 自动过期检查
- * 5. 防止 XSS 攻击的额外保护
+ * 1. 默认使用内存存储 access token（不落盘）
+ * 2. 支持 session/local 兼容模式
+ * 3. 自动过期检查
+ * 4. 统一清理旧版持久化键
  */
 
 import type { User } from '../types'
@@ -22,7 +21,6 @@ type StorageMode = 'memory' | 'session' | 'local'
 // 认证数据结构
 interface AuthData {
   token: string | null
-  refreshToken?: string | null
   user: User | null
   isAuthenticated: boolean
   expiresAt?: number // Token 过期时间戳
@@ -40,15 +38,15 @@ let memoryStorage: AuthData = {
   isAuthenticated: false,
 }
 
-// 当前存储模式（默认使用 sessionStorage）
-let currentStorageMode: StorageMode = 'session'
+// 当前存储模式（默认使用 memory，不落盘 access token）
+let currentStorageMode: StorageMode = 'memory'
 
 /**
  * 设置存储模式
  * @param mode - 存储模式
- * - 'memory': 仅内存存储，最安全，刷新页面会丢失
- * - 'session': sessionStorage，关闭浏览器后清除（推荐）
- * - 'local': localStorage，持久化存储（不推荐，仅用于兼容）
+ * - 'memory': 仅内存存储（默认，最安全）
+ * - 'session': sessionStorage（兼容模式）
+ * - 'local': localStorage（兼容模式，不建议）
  */
 export const setStorageMode = (mode: StorageMode): void => {
   currentStorageMode = mode
@@ -85,8 +83,7 @@ const getStorage = (): Storage | null => {
 }
 
 /**
- * 注意：不再使用加密，直接依赖 sessionStorage 的浏览器安全机制
- * sessionStorage 数据在关闭标签页后自动清除，且仅限同源访问
+ * 注意：默认内存模式不落盘；session/local 仅用于兼容或调试场景
  */
 
 /**
@@ -137,7 +134,7 @@ export const getStoredToken = (): string | null => {
 
   // 检查是否过期
   if (isTokenExpired(parsed.state.expiresAt)) {
-    // Access Token 过期时保留 refresh token，交给拦截器走刷新流程
+    // Access Token 过期后返回 null，由拦截器通过 HttpOnly Cookie 刷新
     return null
   }
 
@@ -148,11 +145,7 @@ export const getStoredToken = (): string | null => {
  * 获取存储的 Refresh Token
  */
 export const getStoredRefreshToken = (): string | null => {
-  const parsed = parseAuthStorage()
-  if (!parsed?.state) {
-    return null
-  }
-  return parsed.state.refreshToken ?? null
+  return null
 }
 
 /**
@@ -193,7 +186,6 @@ export const setAuthToken = (token: string | null, expiresIn: number = 7 * 24 * 
     version: current?.version ?? 1,
     state: {
       token,
-      refreshToken: current?.state?.refreshToken ?? null,
       user: current?.state?.user ?? null,
       isAuthenticated: true,
       expiresAt,
@@ -222,7 +214,6 @@ export const setAuthToken = (token: string | null, expiresIn: number = 7 * 24 * 
  */
 export const setAuthSession = (params: {
   accessToken: string
-  refreshToken?: string | null
   expiresIn?: number
   user?: User | null
 }): void => {
@@ -235,15 +226,10 @@ export const setAuthSession = (params: {
   const current = parseAuthStorage()
   const expiresIn = params.expiresIn && params.expiresIn > 0 ? params.expiresIn : 7 * 24 * 60 * 60
   const expiresAt = Date.now() + expiresIn * 1000
-  const refreshToken = params.refreshToken !== undefined
-    ? (params.refreshToken ? String(params.refreshToken).trim() : null)
-    : (current?.state?.refreshToken ?? null)
-
   const next: PersistedAuthShape = {
     version: current?.version ?? 1,
     state: {
       token: accessToken,
-      refreshToken,
       user: params.user !== undefined ? (params.user ?? null) : (current?.state?.user ?? null),
       isAuthenticated: true,
       expiresAt,
@@ -273,7 +259,6 @@ export const setUserInfo = (user: User | null): void => {
     version: current?.version ?? 1,
     state: {
       token: current?.state?.token ?? null,
-      refreshToken: current?.state?.refreshToken ?? null,
       user,
       isAuthenticated: !!user,
       expiresAt: current?.state?.expiresAt,
@@ -302,7 +287,6 @@ export const clearAuthStorage = (): void => {
   // 清除内存
   memoryStorage = {
     token: null,
-    refreshToken: null,
     user: null,
     isAuthenticated: false,
   }
@@ -348,7 +332,6 @@ export const migrateOldStorage = (): void => {
       // 迁移到新的存储方式
       setAuthSession({
         accessToken: parsed.state.token,
-        refreshToken: parsed.state.refreshToken ?? null,
         user: parsed.state.user ?? null,
       })
 

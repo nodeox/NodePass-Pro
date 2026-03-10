@@ -1,6 +1,0 @@
-/bin/
-/data/
-.env
-*.log
-*.db
-.DS_Store

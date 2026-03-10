@@ -70,7 +70,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
 ```
 
 > 发布说明（2026-03-08）  
-> 自此版本起，当 `BACKEND_LICENSE_ENABLED=true` 时，必须同时配置 `BACKEND_LICENSE_DOMAIN`（建议同时配置 `BACKEND_LICENSE_SITE_URL`）。若仅开启授权开关而未配置域名，后端会在运行时授权校验中拒绝通过，业务 API 将被拦截。
+> 运行时授权支持统一校验接口配置：可通过 `BACKEND_LICENSE_VERIFY_URL` 对接新授权系统。`BACKEND_LICENSE_DOMAIN/BACKEND_LICENSE_SITE_URL` 默认不再强制，若需保留旧域名强校验策略，可设置 `BACKEND_LICENSE_REQUIRE_DOMAIN=true`。
 
 > 发布说明（2026-03-09）  
 > 自此版本起，`install.sh` 默认采用“最小部署清单”模式（不保留源码）；`scripts/deploy.sh` 默认使用预构建镜像，且默认不构建 `nodeclient` 二进制。如需保留源码请传 `--with-source`，如需本地构建镜像请传 `--build-image`，如需构建 `nodeclient` 请传 `--build-nodeclient`（建议与 `--with-source` 配合）。
@@ -119,7 +119,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nodeox/NodePass-Pro/main/ins
   --non-interactive --with-source --build-nodeclient
 ```
 
-授权接口地址由系统内置，不对外暴露也不支持命令行覆盖。
+授权接口地址默认内置，可通过 `--license-server` 或环境变量 `BACKEND_LICENSE_VERIFY_URL` 覆盖。
 
 1) 仅部署核心服务（PostgreSQL + Redis + Backend + Frontend）
 
@@ -130,8 +130,8 @@ cd NodePass-Pro
 ```
 
 说明：
-- 未提供可用生产域名时，`scripts/deploy.sh` 会默认关闭后端运行时授权（避免误拦截业务 API）。
-- 如需启用运行时授权，请显式提供域名：
+- 未配置 `BACKEND_LICENSE_VERIFY_URL` 时，默认走内置授权地址。
+- 如需启用域名强校验，请同时设置 `BACKEND_LICENSE_REQUIRE_DOMAIN=true` 与可用域名：
 
 ```bash
 ./scripts/deploy.sh --license-key NP-XXXX-XXXX --license-domain panel.example.com --license-site-url https://panel.example.com

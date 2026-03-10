@@ -26,6 +26,7 @@ const Profile = lazy(() => import('./pages/profile/Profile'))
 const Announcements = lazy(() => import('./pages/system/Announcements'))
 const AuditLogs = lazy(() => import('./pages/system/AuditLogs'))
 const SystemConfig = lazy(() => import('./pages/system/SystemConfig'))
+const RoleManage = lazy(() => import('./pages/system/RoleManage'))
 const UserManage = lazy(() => import('./pages/system/UserManage'))
 const UserDetail = lazy(() => import('./pages/system/UserDetail'))
 const TunnelDetail = lazy(() => import('./pages/tunnels/TunnelDetail'))
@@ -272,6 +273,10 @@ const router = createBrowserRouter([
               {
                 path: 'system/users',
                 element: withLazy(<UserManage />),
+              },
+              {
+                path: 'system/roles',
+                element: withLazy(<RoleManage />),
               },
               {
                 path: 'system/users/:id',

@@ -71,6 +71,11 @@ type LicenseConfig struct {
 	Enabled               bool   `mapstructure:"enabled"`
 	LicenseKey            string `mapstructure:"license_key"`
 	MachineID             string `mapstructure:"machine_id"`
+	VerifyURL             string `mapstructure:"verify_url"`
+	Product               string `mapstructure:"product"`
+	Channel               string `mapstructure:"channel"`
+	ClientVersion         string `mapstructure:"client_version"`
+	RequireDomain         bool   `mapstructure:"require_domain"`
 	Domain                string `mapstructure:"domain"`
 	SiteURL               string `mapstructure:"site_url"`
 	VerifyIntervalSeconds int    `mapstructure:"verify_interval"`
@@ -128,6 +133,12 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 	if cfg.License.OfflineGraceSeconds <= 0 {
 		cfg.License.OfflineGraceSeconds = 600
+	}
+	if strings.TrimSpace(cfg.License.Product) == "" {
+		cfg.License.Product = "backend"
+	}
+	if strings.TrimSpace(cfg.License.Channel) == "" {
+		cfg.License.Channel = "stable"
 	}
 
 	GlobalConfig = cfg

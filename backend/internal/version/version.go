@@ -3,7 +3,7 @@ package version
 import "time"
 
 // Version 表示后端服务版本号，可通过 -ldflags 覆盖。
-var Version = "1.0.0"
+var Version = "1.0.1"
 
 // BuildTime 构建时间，可通过 -ldflags 覆盖。
 var BuildTime *time.Time

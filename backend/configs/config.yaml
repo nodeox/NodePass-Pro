@@ -66,6 +66,17 @@ license:
   enabled: false
   license_key: ""
   machine_id: ""
+  # 可选：授权/版本统一校验接口地址
+  # 示例：http://127.0.0.1:8091/api/v1/verify
+  verify_url: ""
+  # 校验产品标识（默认 backend）
+  product: "backend"
+  # 发布通道（默认 stable）
+  channel: "stable"
+  # 可选：上报客户端版本（为空则自动使用运行时版本）
+  client_version: ""
+  # 是否要求必须提供可公开域名（旧策略兼容）
+  require_domain: false
   # 必填（license.enabled=true 时）：面板访问域名（如 panel.example.com）
   domain: ""
   # 可选：面板完整地址（如 https://panel.example.com）

@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'user'
+export type UserRole = string
 
 export interface User {
   id: number
@@ -389,6 +389,110 @@ export interface AdminUserListQuery extends PaginationQuery {
 }
 
 export type AdminUserListResult = PaginationResult<AdminUserRecord>
+
+export interface RoleRecord {
+  id: number
+  code: string
+  name: string
+  description?: string | null
+  is_system: boolean
+  is_enabled: boolean
+  created_at: string
+  updated_at: string
+  permissions: string[]
+}
+
+export interface RoleListResult {
+  list: RoleRecord[]
+  total: number
+}
+
+export interface CreateRolePayload {
+  code: string
+  name: string
+  description?: string
+  is_enabled?: boolean
+  permissions?: string[]
+}
+
+export interface UpdateRolePayload {
+  name?: string
+  description?: string | null
+  is_enabled?: boolean
+}
+
+export interface UpdateRolePermissionsPayload {
+  permissions: string[]
+}
+
+export interface AdminUserRoleInfo {
+  id: number
+  code: string
+  name: string
+  description?: string | null
+  is_system: boolean
+  is_enabled: boolean
+}
+
+export interface AdminUserDetailStats {
+  tunnel_count: number
+  running_tunnel_count: number
+  node_group_count: number
+  node_instance_count: number
+  active_session_count: number
+  total_traffic_in: number
+  total_traffic_out: number
+}
+
+export interface AdminUserSessionRecord {
+  id: number
+  ip_address: string
+  user_agent: string
+  is_revoked: boolean
+  last_used_at?: string | null
+  expires_at: string
+  created_at: string
+}
+
+export interface AdminUserActivityRecord {
+  id: number
+  action: string
+  resource_type?: string | null
+  resource_id?: number | null
+  details?: string | null
+  ip_address?: string | null
+  user_agent?: string | null
+  created_at: string
+}
+
+export interface AdminUserTunnelRecord {
+  id: number
+  name: string
+  protocol: string
+  status: string
+  entry_group_id: number
+  exit_group_id?: number | null
+  updated_at: string
+}
+
+export interface AdminUserNodeGroupRecord {
+  id: number
+  name: string
+  type: string
+  is_enabled: boolean
+  updated_at: string
+}
+
+export interface AdminUserDetailResult {
+  user: AdminUserRecord
+  role?: AdminUserRoleInfo | null
+  permissions: string[]
+  stats: AdminUserDetailStats
+  sessions: AdminUserSessionRecord[]
+  recent_activities: AdminUserActivityRecord[]
+  recent_tunnels: AdminUserTunnelRecord[]
+  recent_node_groups: AdminUserNodeGroupRecord[]
+}
 
 export type WebSocketEventType =
   | 'node_status_changed'

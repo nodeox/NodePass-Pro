@@ -12,3 +12,13 @@ log_path: "/var/log/nodeclient/"
 heartbeat_interval: 30
 config_check_interval: 60
 traffic_report_interval: 60
+
+# 可选：启用 nodeclient 启动前统一授权校验
+license_enabled: false
+license_verify_url: "http://127.0.0.1:8091/api/v1/verify"
+license_key: ""
+license_machine_id: ""
+license_product: "nodeclient"
+license_channel: "stable"
+license_timeout: 10
+license_fail_open: false

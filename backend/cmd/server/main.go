@@ -143,8 +143,8 @@ func validateSecurityConfig(cfg *config.Config) error {
 	if secret == insecureJWTSecretPlaceholder {
 		return fmt.Errorf("检测到默认 JWT Secret，请修改后再启动")
 	}
-	if len(secret) < 32 {
-		return fmt.Errorf("JWT Secret 长度不足 32 字符（当前: %d 字符），请使用更长的随机字符串以确保安全性", len(secret))
+	if len(secret) < 64 {
+		return fmt.Errorf("JWT Secret 长度不足 64 字符（当前: %d 字符），请使用更长的随机字符串以确保安全性", len(secret))
 	}
 	return nil
 }
@@ -201,6 +201,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	telegramHandler := handlers.NewTelegramHandler(database.DB)
 	authHandler := handlers.NewAuthHandler(database.DB)
 	userAdminHandler := handlers.NewUserAdminHandler(database.DB)
+	roleAdminHandler := handlers.NewRoleAdminHandler(database.DB)
 	alertHandler := handlers.NewAlertHandler(database.DB)
 	alertRuleHandler := handlers.NewAlertRuleHandler(database.DB)
 	notificationChannelHandler := handlers.NewNotificationChannelHandler(database.DB)
@@ -255,9 +256,12 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		auth := authGroup.Group("/auth")
 		{
 			auth.GET("/me", authHandler.Me)
+			auth.GET("/sessions", authHandler.ListSessions)
 			auth.PUT("/password", authHandler.ChangePassword)
 			auth.POST("/email/code", authHandler.SendEmailChangeCode)
 			auth.PUT("/email", authHandler.ChangeEmail)
+			auth.POST("/revoke-current", authHandler.RevokeCurrentSession)
+			auth.DELETE("/sessions/:id", authHandler.RevokeSession)
 			auth.POST("/revoke-all", authHandler.RevokeAllTokens) // 撤销所有 tokens
 		}
 
@@ -413,9 +417,21 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		{
 			adminUsers.GET("", userAdminHandler.ListUsers)
 			adminUsers.GET("/:id", userAdminHandler.GetUser)
+			adminUsers.GET("/:id/detail", userAdminHandler.GetUserDetail)
 			adminUsers.PUT("/:id/role", userAdminHandler.UpdateRole)
 			adminUsers.PUT("/:id/status", userAdminHandler.UpdateStatus)
 			adminUsers.POST("/:id/vip/upgrade", vipHandler.UpgradeUser)
+		}
+
+		adminRoles := adminGroup.Group("/roles")
+		{
+			adminRoles.GET("", roleAdminHandler.ListRoles)
+			adminRoles.GET("/permissions", roleAdminHandler.ListAvailablePermissions)
+			adminRoles.POST("", roleAdminHandler.CreateRole)
+			adminRoles.GET("/:id", roleAdminHandler.GetRole)
+			adminRoles.PUT("/:id", roleAdminHandler.UpdateRole)
+			adminRoles.PUT("/:id/permissions", roleAdminHandler.UpdateRolePermissions)
+			adminRoles.DELETE("/:id", roleAdminHandler.DeleteRole)
 		}
 
 		adminBenefitCodes := adminGroup.Group("/benefit-codes")

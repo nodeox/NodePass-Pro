@@ -49,7 +49,8 @@ func RequirePermission(permission string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		if permission == "" {
-			c.Next()
+			utils.Error(c, http.StatusInternalServerError, "PERMISSION_CONFIG_INVALID", "权限配置错误")
+			c.Abort()
 			return
 		}
 
@@ -57,6 +58,12 @@ func RequirePermission(permission string) gin.HandlerFunc {
 		if !ok {
 			utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
 			c.Abort()
+			return
+		}
+		roleValue, _ := c.Get("role")
+		role, _ := roleValue.(string)
+		if strings.EqualFold(strings.TrimSpace(role), "admin") {
+			c.Next()
 			return
 		}
 
@@ -71,6 +78,27 @@ func RequirePermission(permission string) gin.HandlerFunc {
 			Where("user_id = ? AND permission = ?", userID, permission).
 			Count(&count).Error; err != nil {
 			utils.Error(c, http.StatusInternalServerError, "QUERY_PERMISSION_FAILED", "权限校验失败")
+			c.Abort()
+			return
+		}
+
+		if count > 0 {
+			c.Next()
+			return
+		}
+
+		normalizedRole := strings.TrimSpace(strings.ToLower(role))
+		if normalizedRole == "" {
+			utils.Error(c, http.StatusForbidden, "FORBIDDEN", "缺少所需权限")
+			c.Abort()
+			return
+		}
+
+		if err := database.DB.Table("role_permissions AS rp").
+			Joins("JOIN roles r ON r.id = rp.role_id").
+			Where("r.code = ? AND r.is_enabled = ? AND rp.permission = ?", normalizedRole, true, permission).
+			Count(&count).Error; err != nil {
+			utils.Error(c, http.StatusInternalServerError, "QUERY_ROLE_PERMISSION_FAILED", "角色权限校验失败")
 			c.Abort()
 			return
 		}

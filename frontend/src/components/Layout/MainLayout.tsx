@@ -9,6 +9,7 @@ import {
   GiftOutlined,
   LogoutOutlined,
   NotificationOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   SwapOutlined,
   UserOutlined,
@@ -99,6 +100,11 @@ const getAdminMenuEntries = (): MenuEntry[] => [
     key: '/admin/system/users',
     label: '用户管理',
     icon: <UserOutlined />,
+  },
+  {
+    key: '/admin/system/roles',
+    label: '角色管理',
+    icon: <SafetyCertificateOutlined />,
   },
   {
     key: '/node-groups',

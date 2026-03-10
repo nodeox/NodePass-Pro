@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"errors"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"nodepass-pro/backend/internal/config"
@@ -46,8 +49,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		utils.SuccessResponse(c, gin.H{"user": user}, "注册成功")
 		return
 	}
+	setRefreshTokenCookie(c, result.RefreshToken)
 
-	utils.SuccessResponse(c, result, "注册成功")
+	utils.SuccessResponse(c, buildAuthLoginPayload(result), "注册成功")
 }
 
 // Login POST /api/v1/auth/login
@@ -186,7 +190,7 @@ func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 }
 
 // LoginV2 POST /api/v1/auth/login/v2
-// 新版登录接口，返回 access token 和 refresh token
+// 新版登录接口：响应体返回 access token，refresh token 通过 HttpOnly Cookie 下发。
 func (h *AuthHandler) LoginV2(c *gin.Context) {
 	var req services.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -202,55 +206,73 @@ func (h *AuthHandler) LoginV2(c *gin.Context) {
 		writeServiceError(c, err, "LOGIN_FAILED")
 		return
 	}
+	setRefreshTokenCookie(c, result.RefreshToken)
 
-	utils.SuccessResponse(c, result, "登录成功")
+	utils.SuccessResponse(c, buildAuthLoginPayload(result), "登录成功")
 }
 
 // RefreshToken POST /api/v1/auth/refresh/v2
-// 使用 refresh token 刷新 access token
+// 使用 refresh token（优先 body，其次 HttpOnly Cookie）刷新 access token。
 func (h *AuthHandler) RefreshTokenV2(c *gin.Context) {
 	type requestPayload struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	var req requestPayload
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+	refreshToken := resolveRefreshToken(c, req.RefreshToken)
+	if refreshToken == "" {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "缺少刷新凭证")
 		return
 	}
 
 	ipAddress := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
 
-	result, err := h.authService.RefreshAccessToken(req.RefreshToken, ipAddress, userAgent)
+	result, err := h.authService.RefreshAccessToken(refreshToken, ipAddress, userAgent)
 	if err != nil {
 		writeServiceError(c, err, "REFRESH_TOKEN_FAILED")
 		return
 	}
+	setRefreshTokenCookie(c, result.RefreshToken)
 
-	utils.SuccessResponse(c, result, "刷新成功")
+	utils.SuccessResponse(c, buildAuthLoginPayload(result), "刷新成功")
 }
 
 // Logout POST /api/v1/auth/logout
 // 登出（撤销 refresh token）
 func (h *AuthHandler) Logout(c *gin.Context) {
-	type requestPayload struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	var req requestPayload
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// 如果没有提供 refresh token，也算登出成功
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		clearRefreshTokenCookie(c)
 		utils.SuccessResponse(c, nil, "登出成功")
 		return
 	}
 
-	if req.RefreshToken != "" {
-		if err := h.authService.RevokeRefreshToken(req.RefreshToken); err != nil {
+	type requestPayload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		// 请求体异常不阻断登出，直接清理 cookie 返回成功。
+		clearRefreshTokenCookie(c)
+		utils.SuccessResponse(c, nil, "登出成功")
+		return
+	}
+
+	refreshToken := resolveRefreshToken(c, req.RefreshToken)
+	if refreshToken != "" {
+		if err := h.authService.RevokeCurrentSession(userID, refreshToken); err != nil {
 			// 撤销失败也不影响登出
+			clearRefreshTokenCookie(c)
 			utils.SuccessResponse(c, nil, "登出成功")
 			return
 		}
 	}
 
+	clearRefreshTokenCookie(c)
 	utils.SuccessResponse(c, nil, "登出成功")
 }
 
@@ -268,5 +290,94 @@ func (h *AuthHandler) RevokeAllTokens(c *gin.Context) {
 		return
 	}
 
+	clearRefreshTokenCookie(c)
 	utils.SuccessResponse(c, nil, "已撤销所有登录会话")
+}
+
+// ListSessions GET /api/v1/auth/sessions
+// 获取当前用户登录会话列表。
+func (h *AuthHandler) ListSessions(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	currentToken := resolveRefreshToken(c, "")
+	sessions, err := h.authService.ListUserSessions(userID, currentToken)
+	if err != nil {
+		writeServiceError(c, err, "LIST_SESSIONS_FAILED")
+		return
+	}
+
+	utils.Success(c, gin.H{
+		"items": sessions,
+		"total": len(sessions),
+	})
+}
+
+// RevokeSession DELETE /api/v1/auth/sessions/:id
+// 撤销当前用户指定会话。
+func (h *AuthHandler) RevokeSession(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	idRaw := strings.TrimSpace(c.Param("id"))
+	parsed, err := strconv.ParseUint(idRaw, 10, 64)
+	if err != nil || parsed == 0 {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "会话 ID 无效")
+		return
+	}
+	sessionID := uint(parsed)
+
+	if err = h.authService.RevokeUserSession(userID, sessionID); err != nil {
+		writeServiceError(c, err, "REVOKE_SESSION_FAILED")
+		return
+	}
+
+	// 若撤销的是当前会话，清理当前 refresh cookie。
+	currentToken := resolveRefreshToken(c, "")
+	if currentToken != "" {
+		sessions, listErr := h.authService.ListUserSessions(userID, currentToken)
+		if listErr == nil {
+			for _, item := range sessions {
+				if item.ID == sessionID && item.IsCurrent {
+					clearRefreshTokenCookie(c)
+					break
+				}
+			}
+		}
+	}
+
+	utils.SuccessResponse(c, nil, "会话已撤销")
+}
+
+// RevokeCurrentSession POST /api/v1/auth/revoke-current
+// 撤销当前会话（优先 body，其次 HttpOnly Cookie）。
+func (h *AuthHandler) RevokeCurrentSession(c *gin.Context) {
+	userID, _, ok := getUserContext(c)
+	if !ok {
+		utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+		return
+	}
+
+	type requestPayload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	var req requestPayload
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+		return
+	}
+
+	if err := h.authService.RevokeCurrentSession(userID, resolveRefreshToken(c, req.RefreshToken)); err != nil {
+		writeServiceError(c, err, "REVOKE_CURRENT_SESSION_FAILED")
+		return
+	}
+
+	clearRefreshTokenCookie(c)
+	utils.SuccessResponse(c, nil, "当前会话已撤销")
 }

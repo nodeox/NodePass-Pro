@@ -36,8 +36,8 @@ import { useNavigate } from 'react-router-dom'
 
 import PageContainer from '../../components/common/PageContainer'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { trafficApi, userAdminApi, vipApi } from '../../services/api'
-import type { AdminUserRecord, UserRole, VipLevelRecord } from '../../types'
+import { roleApi, trafficApi, userAdminApi, vipApi } from '../../services/api'
+import type { AdminUserRecord, RoleRecord, UserRole, VipLevelRecord } from '../../types'
 import { getErrorMessage } from '../../utils/error'
 import { formatTraffic } from '../../utils/format'
 
@@ -83,6 +83,7 @@ const UserManage = () => {
 
   const [users, setUsers] = useState<AdminUserRecord[]>([])
   const [levels, setLevels] = useState<VipLevelRecord[]>([])
+  const [roles, setRoles] = useState<RoleRecord[]>([])
   const [roleModalOpen, setRoleModalOpen] = useState<boolean>(false)
   const [vipModalOpen, setVipModalOpen] = useState<boolean>(false)
   const [trafficModalOpen, setTrafficModalOpen] = useState<boolean>(false)
@@ -133,16 +134,32 @@ const UserManage = () => {
     }
   }, [])
 
+  const loadRoles = useCallback(async (): Promise<void> => {
+    try {
+      const result = await roleApi.list({ include_disabled: true })
+      setRoles(result.list ?? [])
+    } catch (error) {
+      message.error(getErrorMessage(error, '角色列表加载失败'))
+    }
+  }, [])
+
   useEffect(() => {
     void loadUsers()
     void loadLevels()
-  }, [loadLevels, loadUsers])
+    void loadRoles()
+  }, [loadLevels, loadRoles, loadUsers])
 
   const levelMap = useMemo(() => {
     const map = new Map<number, VipLevelRecord>()
     levels.forEach((level) => map.set(level.level, level))
     return map
   }, [levels])
+
+  const roleMap = useMemo(() => {
+    const map = new Map<string, RoleRecord>()
+    roles.forEach((role) => map.set(role.code, role))
+    return map
+  }, [roles])
 
   const runAction = async (
     key: string,
@@ -369,7 +386,7 @@ const UserManage = () => {
           user.id,
           user.username,
           user.email,
-          user.role === 'admin' ? '管理员' : '普通用户',
+          roleMap.get(user.role)?.name || user.role,
           statusTagMap[user.status]?.label || user.status,
           user.vip_level,
           quotaGB,
@@ -466,10 +483,10 @@ const UserManage = () => {
                   <Select
                     placeholder="全部角色"
                     allowClear
-                    options={[
-                      { label: '管理员', value: 'admin' },
-                      { label: '普通用户', value: 'user' },
-                    ]}
+                    options={roles.map((role) => ({
+                      label: role.name,
+                      value: role.code,
+                    }))}
                   />
                 </Form.Item>
               </Col>
@@ -617,7 +634,9 @@ const UserManage = () => {
             dataIndex: 'role',
             width: 100,
             render: (role: UserRole) => (
-              <Tag color={role === 'admin' ? 'purple' : 'blue'}>{role}</Tag>
+              <Tag color={role === 'admin' ? 'purple' : 'blue'}>
+                {roleMap.get(role)?.name || role}
+              </Tag>
             ),
           },
           {
@@ -675,7 +694,7 @@ const UserManage = () => {
                 <Button
                   size="small"
                   icon={<EyeOutlined />}
-                  onClick={() => navigate(`/system/users/${record.id}`)}
+                  onClick={() => navigate(`/admin/system/users/${record.id}`)}
                 >
                   详情
                 </Button>
@@ -773,10 +792,12 @@ const UserManage = () => {
         >
           <Form.Item label="角色" name="role" rules={[{ required: true }]}>
             <Select
-              options={[
-                { label: '普通用户', value: 'user' },
-                { label: '管理员', value: 'admin' },
-              ]}
+              options={roles
+                .filter((role) => role.is_enabled || role.code === editingUser?.role)
+                .map((role) => ({
+                  label: role.name,
+                  value: role.code,
+                }))}
             />
           </Form.Item>
         </Form>

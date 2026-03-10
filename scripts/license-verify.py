@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+from urllib.parse import urlparse
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -36,8 +37,7 @@ def fixed_verify_url() -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="NodePass Pro 授权验证")
-    # 兼容旧参数：保留但不生效，避免升级脚本报错。
-    parser.add_argument("--verify-url", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--verify-url", default="", help="授权验证接口地址（默认内置地址）")
     parser.add_argument("--license-key", required=True, help="授权码")
     parser.add_argument("--machine-id", required=True, help="机器唯一标识")
     parser.add_argument("--action", required=True, choices=["install", "upgrade"], help="动作类型")
@@ -49,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--commit", default="", help="仓库提交")
     parser.add_argument("--domain", default="", help="授权绑定域名")
     parser.add_argument("--site-url", default="", help="授权绑定站点地址")
+    parser.add_argument("--channel", default="stable", help="版本通道（统一接口使用）")
     parser.add_argument("--timeout", type=int, default=20, help="请求超时秒数")
     return parser.parse_args()
 
@@ -140,6 +141,150 @@ def check_version_policy(versions: Versions, policy: dict[str, str]) -> tuple[bo
 
 
 def do_verify(args: argparse.Namespace) -> dict[str, Any]:
+    verify_url = resolve_verify_url(args.verify_url)
+    if is_unified_verify_url(verify_url):
+        return do_verify_unified(args, verify_url)
+    return do_verify_legacy(args, verify_url)
+
+
+def resolve_verify_url(raw: str) -> str:
+    value = (raw or "").strip()
+    if value:
+        return value
+    return fixed_verify_url()
+
+
+def is_unified_verify_url(verify_url: str) -> bool:
+    try:
+        parsed = urlparse(verify_url)
+    except ValueError:
+        return False
+    path = (parsed.path or "").rstrip("/")
+    return path.endswith("/api/v1/verify")
+
+
+def post_json(url: str, payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any] | None, str]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+            code = getattr(response, "status", 200)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return exc.code, None, body
+    except Exception:  # noqa: BLE001
+        return 0, None, "请求授权接口失败"
+
+    try:
+        data = json.loads(raw)
+    except Exception as exc:  # noqa: BLE001
+        return code, None, f"授权接口返回非 JSON: {exc}"
+    return code, data, raw
+
+
+def do_verify_unified(args: argparse.Namespace, verify_url: str) -> dict[str, Any]:
+    domain = (args.domain or "").strip()
+    site_url = (args.site_url or "").strip()
+
+    component_versions = [
+        ("panel", args.panel_version),
+        ("backend", args.backend_version),
+        ("frontend", args.frontend_version),
+        ("nodeclient", args.nodeclient_version),
+    ]
+
+    detail: dict[str, Any] = {}
+    license_snapshot: dict[str, Any] = {}
+
+    for product, current_version in component_versions:
+        payload: dict[str, Any] = {
+            "license_key": args.license_key,
+            "machine_id": args.machine_id,
+            "hostname": args.machine_id,
+            "product": product,
+            "client_version": current_version,
+            "channel": args.channel,
+        }
+        # 兼容保留字段（统一接口会忽略未知字段）
+        payload["action"] = args.action
+        if domain:
+            payload["domain"] = domain
+        if site_url:
+            payload["site_url"] = site_url
+
+        status_code, data, raw_or_err = post_json(verify_url, payload, args.timeout)
+        if status_code == 0:
+            return {
+                "valid": False,
+                "message": raw_or_err,
+            }
+        if status_code < 200 or status_code >= 300:
+            return {
+                "valid": False,
+                "message": f"授权接口返回 HTTP {status_code}",
+                "error": raw_or_err,
+            }
+        if data is None:
+            return {
+                "valid": False,
+                "message": raw_or_err,
+            }
+
+        success = bool(data.get("success", False))
+        payload_data = data.get("data") or {}
+        verified = bool(payload_data.get("verified", False))
+        license_data = payload_data.get("license") or {}
+        version_data = payload_data.get("version") or {}
+
+        detail[product] = {
+            "verified": verified,
+            "status": payload_data.get("status"),
+            "license_status": license_data.get("status"),
+            "version_status": version_data.get("status"),
+            "message": version_data.get("message") or license_data.get("message") or payload_data.get("status"),
+            "latest_version": version_data.get("latest_version"),
+        }
+
+        if not license_snapshot:
+            license_snapshot = {
+                "license_id": license_data.get("license_id"),
+                "customer": license_data.get("customer"),
+                "plan": license_data.get("plan_code"),
+                "expires_at": license_data.get("expires_at"),
+            }
+
+        if not success or not verified:
+            fail_msg = (
+                version_data.get("message")
+                or license_data.get("message")
+                or payload_data.get("status")
+                or data.get("message")
+                or f"{product} 校验失败"
+            )
+            return {
+                "valid": False,
+                "message": str(fail_msg),
+                "component": product,
+                "detail": detail,
+                **license_snapshot,
+                "data": data,
+            }
+
+    return {
+        "valid": True,
+        "message": "授权与版本校验通过",
+        **license_snapshot,
+        "component_results": detail,
+    }
+
+
+def do_verify_legacy(args: argparse.Namespace, verify_url: str) -> dict[str, Any]:
     domain = (args.domain or "").strip()
     site_url = (args.site_url or "").strip()
 
@@ -162,7 +307,7 @@ def do_verify(args: argparse.Namespace) -> dict[str, Any]:
         payload["site_url"] = site_url
 
     request = urllib.request.Request(
-        fixed_verify_url(),
+        verify_url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",

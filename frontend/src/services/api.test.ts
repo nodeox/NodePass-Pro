@@ -45,7 +45,6 @@ describe('apiClient', () => {
   it('401 时使用 /auth/refresh/v2 刷新并重试原请求', async () => {
     setAuthSession({
       accessToken: 'access-old',
-      refreshToken: 'refresh-old',
       user: {
         id: 1,
         username: 'tester',
@@ -95,7 +94,7 @@ describe('apiClient', () => {
     const response = await apiClient.get('/protected')
     expect(response.status).toBe(200)
     expect(getStoredToken()).toBe('access-new')
-    expect(getStoredRefreshToken()).toBe('refresh-new')
+    expect(getStoredRefreshToken()).toBeNull()
   })
 
   it('刷新失败时清空凭证并跳转登录页', async () => {
@@ -103,7 +102,6 @@ describe('apiClient', () => {
 
     setAuthSession({
       accessToken: 'access-old',
-      refreshToken: 'refresh-old',
     })
 
     apiMock.onGet('/protected').reply(401, {
