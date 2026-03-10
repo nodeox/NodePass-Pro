@@ -7,6 +7,7 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/NodePass-Pro}"
 PANEL_PORT="${PANEL_PORT:-8088}"
 PANEL_DOMAIN="${PANEL_DOMAIN:-}"
 ACME_EMAIL="${ACME_EMAIL:-}"
+DEPLOY_WITH_BUILD="${DEPLOY_WITH_BUILD:-false}"
 BOOTSTRAP_ADMIN_USERNAME="${BOOTSTRAP_ADMIN_USERNAME:-admin}"
 BOOTSTRAP_ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
 BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD:-}"
@@ -377,7 +378,15 @@ else
   configure_firewall_ports "${PANEL_PORT}"
 fi
 
-docker_compose "${compose_args[@]}" up -d --build
+if [[ "${DEPLOY_WITH_BUILD}" == "true" ]]; then
+  log_warn "当前为源码编译部署模式（DEPLOY_WITH_BUILD=true）。"
+  docker_compose "${compose_args[@]}" up -d --build
+else
+  log_info "当前为镜像部署模式（默认）。"
+  log_info "正在拉取镜像: ${BACKEND_IMAGE:-nodepass/license-backend:latest} / ${FRONTEND_IMAGE:-nodepass/license-frontend:latest}"
+  docker_compose "${compose_args[@]}" pull
+  docker_compose "${compose_args[@]}" up -d --no-build
+fi
 docker_compose "${compose_args[@]}" ps
 
 echo
