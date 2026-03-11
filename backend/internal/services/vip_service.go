@@ -12,6 +12,15 @@ import (
 )
 
 // VIPService VIP 等级管理服务。
+//
+// Deprecated: 此服务已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/vip/commands (CreateLevelHandler, UpgradeUserHandler)
+//   - Queries: internal/application/vip/queries (ListLevelsHandler, GetMyLevelHandler)
+//   - Repository: internal/infrastructure/persistence/postgres/vip/vip_repository.go
+//   - Cache: internal/infrastructure/cache/vip_cache.go
+// 通过依赖注入容器获取: container.CreateLevelHandler, container.ListLevelsHandler 等
+// 此服务将在所有旧代码迁移完成后删除。
 type VIPService struct {
 	db *gorm.DB
 }

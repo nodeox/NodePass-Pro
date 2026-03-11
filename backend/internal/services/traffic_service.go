@@ -11,6 +11,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// TrafficService 流量管理服务。
+//
+// Deprecated: 此服务已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/traffic/commands (RecordTrafficHandler, FlushTrafficHandler)
+//   - Queries: internal/application/traffic/queries (GetUserTrafficHandler, GetTunnelTrafficHandler)
+//   - Repository: internal/infrastructure/persistence/postgres/traffic_repository.go
+//   - Cache: internal/infrastructure/cache/traffic_counter.go
+// 通过依赖注入容器获取: container.RecordTrafficHandler, container.GetUserTrafficHandler 等
+// 此服务将在所有旧代码迁移完成后删除。
+
 // QuotaResult 用户配额信息。
 type QuotaResult struct {
 	TrafficQuota int64   `json:"traffic_quota"`

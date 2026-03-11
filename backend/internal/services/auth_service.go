@@ -16,6 +16,15 @@ import (
 )
 
 // AuthService 认证服务。
+//
+// Deprecated: 此服务已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/auth/commands (LoginHandler, RegisterHandler, ChangePasswordHandler, RefreshTokenHandler)
+//   - Queries: internal/application/auth/queries (GetUserHandler)
+//   - Repository: internal/infrastructure/persistence/postgres/auth/auth_repository.go
+//   - Cache: internal/infrastructure/cache/auth_cache.go
+// 通过依赖注入容器获取: container.LoginHandler, container.RegisterHandler 等
+// 此服务将在所有旧代码迁移完成后删除。
 type AuthService struct {
 	db                  *gorm.DB
 	vipService          *VIPService

@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"strings"
@@ -207,7 +208,7 @@ func (s *AuthService) ListUserSessions(userID uint, currentRefreshToken string) 
 			IsRevoked:  isRevoked,
 			IsExpired:  isExpired,
 			IsActive:   !isRevoked && !isExpired,
-			IsCurrent:  currentHash != "" && currentHash == item.TokenHash,
+			IsCurrent:  currentHash != "" && subtle.ConstantTimeCompare([]byte(currentHash), []byte(item.TokenHash)) == 1,
 		})
 	}
 	return result, nil

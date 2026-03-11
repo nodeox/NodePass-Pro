@@ -3,6 +3,15 @@ package models
 import "time"
 
 // TrafficRecord 流量记录模型（traffic_records 表）。
+//
+// Deprecated: 此模型已被重构为 DDD 架构。
+// 新代码请使用 internal/domain/traffic/entity.go 中的 TrafficRecord 实体。
+// 迁移指南：
+//   - 领域层: internal/domain/traffic/entity.go
+//   - 应用层: internal/application/traffic/commands 和 queries
+//   - 基础设施: internal/infrastructure/persistence/postgres/traffic_repository.go
+//   - 缓存层: internal/infrastructure/cache/traffic_counter.go
+// 此模型将在所有旧代码迁移完成后删除。
 type TrafficRecord struct {
 	ID     uint  `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID uint  `gorm:"not null;index:idx_traffic_records_user_hour,priority:1" json:"user_id"`

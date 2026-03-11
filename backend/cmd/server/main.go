@@ -25,6 +25,8 @@ import (
 
 	// 新架构 DDD 模块
 	"nodepass-pro/backend/internal/infrastructure/container"
+	authCommands "nodepass-pro/backend/internal/application/auth/commands"
+	vipQueries "nodepass-pro/backend/internal/application/vip/queries"
 	nodeCommands "nodepass-pro/backend/internal/application/node/commands"
 	trafficCommands "nodepass-pro/backend/internal/application/traffic/commands"
 
@@ -257,6 +259,87 @@ func setupRouter(licenseManager *license.Manager, appContainer *container.Contai
 	api.POST("/auth/refresh/v2", middleware.RateLimit(1, 10), authHandler.RefreshTokenV2)
 	api.POST("/auth/logout", authHandler.Logout)
 
+	// ==================== 新架构认证接口（V3 - DDD + CQRS）====================
+	// V3 登录接口 - 使用新 DDD 架构
+	api.POST("/auth/login/v3", middleware.RateLimit(0.2, 5), func(c *gin.Context) {
+		var req struct {
+			Account  string `json:"account" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+			return
+		}
+
+		cmd := authCommands.LoginCommand{
+			Account:   req.Account,
+			Password:  req.Password,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.GetHeader("User-Agent"),
+		}
+
+		result, err := appContainer.LoginHandler.Handle(c.Request.Context(), cmd)
+		if err != nil {
+			utils.Error(c, http.StatusUnauthorized, "LOGIN_FAILED", err.Error())
+			return
+		}
+
+		utils.Success(c, result)
+	})
+
+	// V3 注册接口 - 使用新 DDD 架构
+	api.POST("/auth/register/v3", func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required"`
+			Email    string `json:"email" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+			return
+		}
+
+		cmd := authCommands.RegisterCommand{
+			Username: req.Username,
+			Email:    req.Email,
+			Password: req.Password,
+		}
+
+		result, err := appContainer.RegisterHandler.Handle(c.Request.Context(), cmd)
+		if err != nil {
+			utils.Error(c, http.StatusBadRequest, "REGISTER_FAILED", err.Error())
+			return
+		}
+
+		utils.Success(c, result)
+	})
+
+	// V3 刷新令牌接口 - 使用新 DDD 架构
+	api.POST("/auth/refresh/v3", middleware.RateLimit(1, 10), func(c *gin.Context) {
+		var req struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "请求参数错误: "+err.Error())
+			return
+		}
+
+		cmd := authCommands.RefreshTokenCommand{
+			RefreshToken: req.RefreshToken,
+			IPAddress:    c.ClientIP(),
+			UserAgent:    c.GetHeader("User-Agent"),
+		}
+
+		result, err := appContainer.RefreshTokenHandler.Handle(c.Request.Context(), cmd)
+		if err != nil {
+			utils.Error(c, http.StatusUnauthorized, "REFRESH_FAILED", err.Error())
+			return
+		}
+
+		utils.Success(c, result)
+	})
+
+
 	// Telegram webhook - 严格的请求体限制（64KB）和签名验证
 	api.POST("/telegram/webhook",
 		middleware.RequestBodyLimit(64*1024), // 64KB
@@ -431,6 +514,61 @@ func setupRouter(licenseManager *license.Manager, appContainer *container.Contai
 			vip.GET("/levels", vipHandler.ListLevels)
 			vip.GET("/my-level", vipHandler.GetMyLevel)
 		}
+
+		// ==================== 新架构 VIP 接口（V2 - DDD + CQRS）====================
+		// V2 VIP 等级列表接口
+		authGroup.GET("/vip/levels/v2", func(c *gin.Context) {
+			result, err := appContainer.ListLevelsHandler.Handle(c.Request.Context(), vipQueries.ListLevelsQuery{})
+			if err != nil {
+				utils.Error(c, http.StatusInternalServerError, "LIST_LEVELS_FAILED", err.Error())
+				return
+			}
+			utils.Success(c, result)
+		})
+
+		// V2 获取我的 VIP 等级接口
+		authGroup.GET("/vip/my-level/v2", func(c *gin.Context) {
+			userIDValue, exists := c.Get("userID")
+			if !exists {
+				utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "未认证用户")
+				return
+			}
+
+			// 安全的类型断言
+			var userID uint
+			switch v := userIDValue.(type) {
+			case uint:
+				userID = v
+			case int:
+				if v > 0 {
+					userID = uint(v)
+				}
+			case int64:
+				if v > 0 {
+					userID = uint(v)
+				}
+			case float64:
+				if v > 0 {
+					userID = uint(v)
+				}
+			default:
+				utils.Error(c, http.StatusInternalServerError, "INVALID_USER_ID", "无效的用户 ID 类型")
+				return
+			}
+
+			if userID == 0 {
+				utils.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "无效的用户 ID")
+				return
+			}
+
+			query := vipQueries.GetMyLevelQuery{UserID: userID}
+			result, err := appContainer.GetMyLevelHandler.Handle(c.Request.Context(), query)
+			if err != nil {
+				utils.Error(c, http.StatusInternalServerError, "GET_MY_LEVEL_FAILED", err.Error())
+				return
+			}
+			utils.Success(c, result)
+		})
 
 		benefitCodes := authGroup.Group("/benefit-codes")
 		{

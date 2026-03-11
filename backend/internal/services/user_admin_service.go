@@ -13,6 +13,15 @@ import (
 )
 
 // UserAdminService 用户管理服务（管理员）。
+//
+// Deprecated: 此服务已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/user/commands (CreateUserHandler)
+//   - Queries: internal/application/user/queries (GetUserHandler)
+//   - Repository: internal/infrastructure/persistence/postgres/user_repository.go
+//   - Cache: internal/infrastructure/cache/user_cache.go
+// 通过依赖注入容器获取: container.CreateUserHandler, container.GetUserHandler 等
+// 此服务将在所有旧代码迁移完成后删除。
 type UserAdminService struct {
 	db *gorm.DB
 }

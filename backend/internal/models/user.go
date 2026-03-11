@@ -3,6 +3,15 @@ package models
 import "time"
 
 // User 用户模型（users 表）。
+//
+// Deprecated: 此模型已被重构为 DDD 架构。
+// 新代码请使用 internal/domain/auth/entity.go 中的 User 实体。
+// 迁移指南：
+//   - 领域层: internal/domain/auth/entity.go
+//   - 应用层: internal/application/auth/commands 和 queries
+//   - 基础设施: internal/infrastructure/persistence/postgres/auth/auth_repository.go
+//   - 缓存层: internal/infrastructure/cache/auth_cache.go
+// 此模型将在所有旧代码迁移完成后删除。
 type User struct {
 	ID       uint   `gorm:"primaryKey;autoIncrement" json:"id"`
 	Username string `gorm:"type:varchar(50);not null;uniqueIndex:uk_users_username" json:"username"`

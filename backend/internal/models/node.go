@@ -4,6 +4,15 @@ import "time"
 
 // Node 节点模型（nodes 表）。
 // 注意：节点不区分类型，无 type 字段。
+//
+// Deprecated: 此模型已被重构为 DDD 架构。
+// 新代码请使用 internal/domain/node/entity.go 中的 NodeInstance 实体。
+// 迁移指南：
+//   - 领域层: internal/domain/node/entity.go
+//   - 应用层: internal/application/node/commands 和 queries
+//   - 基础设施: internal/infrastructure/persistence/postgres/node_repository.go
+//   - 缓存层: internal/infrastructure/cache/node_cache.go
+// 此模型将在所有旧代码迁移完成后删除。
 type Node struct {
 	ID     uint   `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID uint   `gorm:"not null;index:idx_nodes_user_id" json:"user_id"`

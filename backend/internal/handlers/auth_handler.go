@@ -16,6 +16,14 @@ import (
 )
 
 // AuthHandler 认证相关处理器。
+//
+// Deprecated: 此处理器已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/auth/commands (LoginHandler, RegisterHandler, ChangePasswordHandler, RefreshTokenHandler)
+//   - Queries: internal/application/auth/queries (GetUserHandler)
+//   - 通过依赖注入容器获取: container.LoginHandler, container.RegisterHandler 等
+//   - 新的 HTTP 路由应该直接调用 Application 层的 Handler
+// 此处理器将在所有旧代码迁移完成后删除。
 type AuthHandler struct {
 	authService *services.AuthService
 }

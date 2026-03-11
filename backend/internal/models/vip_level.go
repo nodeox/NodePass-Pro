@@ -3,6 +3,15 @@ package models
 import "time"
 
 // VIPLevel VIP 等级模型（vip_levels 表）。
+//
+// Deprecated: 此模型已被重构为 DDD 架构。
+// 新代码请使用 internal/domain/vip/entity.go 中的 VIPLevel 实体。
+// 迁移指南：
+//   - 领域层: internal/domain/vip/entity.go
+//   - 应用层: internal/application/vip/commands 和 queries
+//   - 基础设施: internal/infrastructure/persistence/postgres/vip/vip_repository.go
+//   - 缓存层: internal/infrastructure/cache/vip_cache.go
+// 此模型将在所有旧代码迁移完成后删除。
 type VIPLevel struct {
 	ID    uint   `gorm:"primaryKey;autoIncrement" json:"id"`
 	Level int    `gorm:"not null;uniqueIndex:uk_vip_levels_level" json:"level"`

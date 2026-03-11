@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -152,8 +153,8 @@ func CSRFProtection() gin.HandlerFunc {
 				return
 			}
 
-			// 验证令牌是否匹配
-			if headerToken != cookieToken {
+			// 验证令牌是否匹配（使用常量时间比较防止时序攻击）
+			if subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) != 1 {
 				utils.Error(c, http.StatusForbidden, "CSRF_TOKEN_MISMATCH", "CSRF 令牌不匹配")
 				c.Abort()
 				return

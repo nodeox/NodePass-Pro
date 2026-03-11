@@ -11,6 +11,14 @@ import (
 )
 
 // VIPHandler VIP 管理处理器。
+//
+// Deprecated: 此处理器已被重构为 DDD 架构。
+// 新代码请使用以下模块：
+//   - Commands: internal/application/vip/commands (CreateLevelHandler, UpgradeUserHandler)
+//   - Queries: internal/application/vip/queries (ListLevelsHandler, GetMyLevelHandler)
+//   - 通过依赖注入容器获取: container.CreateLevelHandler, container.ListLevelsHandler 等
+//   - 新的 HTTP 路由应该直接调用 Application 层的 Handler
+// 此处理器将在所有旧代码迁移完成后删除。
 type VIPHandler struct {
 	vipService *services.VIPService
 }

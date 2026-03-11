@@ -59,18 +59,18 @@ func (r *TrafficRecordRepository) FindByID(ctx context.Context, id uint) (*traff
 func (r *TrafficRecordRepository) FindByUserID(ctx context.Context, userID uint, start, end time.Time) ([]*traffic.TrafficRecord, error) {
 	var models []models.TrafficRecord
 	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
-	
+
 	if !start.IsZero() {
-		query = query.Where("recorded_at >= ?", start)
+		query = query.Where("hour >= ?", start)
 	}
 	if !end.IsZero() {
-		query = query.Where("recorded_at <= ?", end)
+		query = query.Where("hour <= ?", end)
 	}
-	
-	if err := query.Order("recorded_at DESC").Find(&models).Error; err != nil {
+
+	if err := query.Order("hour DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	
+
 	records := make([]*traffic.TrafficRecord, len(models))
 	for i, m := range models {
 		records[i] = toTrafficRecordEntity(&m)
@@ -81,19 +81,19 @@ func (r *TrafficRecordRepository) FindByUserID(ctx context.Context, userID uint,
 // FindByTunnelID 根据隧道 ID 查找流量记录
 func (r *TrafficRecordRepository) FindByTunnelID(ctx context.Context, tunnelID uint, start, end time.Time) ([]*traffic.TrafficRecord, error) {
 	var models []models.TrafficRecord
-	query := r.db.WithContext(ctx).Where("tunnel_id = ?", tunnelID)
-	
+	query := r.db.WithContext(ctx).Where("rule_id = ?", tunnelID)
+
 	if !start.IsZero() {
-		query = query.Where("recorded_at >= ?", start)
+		query = query.Where("hour >= ?", start)
 	}
 	if !end.IsZero() {
-		query = query.Where("recorded_at <= ?", end)
+		query = query.Where("hour <= ?", end)
 	}
-	
-	if err := query.Order("recorded_at DESC").Find(&models).Error; err != nil {
+
+	if err := query.Order("hour DESC").Find(&models).Error; err != nil {
 		return nil, err
 	}
-	
+
 	records := make([]*traffic.TrafficRecord, len(models))
 	for i, m := range models {
 		records[i] = toTrafficRecordEntity(&m)
@@ -104,27 +104,27 @@ func (r *TrafficRecordRepository) FindByTunnelID(ctx context.Context, tunnelID u
 // List 列表查询
 func (r *TrafficRecordRepository) List(ctx context.Context, filter traffic.RecordListFilter) ([]*traffic.TrafficRecord, int64, error) {
 	query := r.db.WithContext(ctx).Model(&models.TrafficRecord{})
-	
+
 	// 过滤条件
 	if filter.UserID > 0 {
 		query = query.Where("user_id = ?", filter.UserID)
 	}
 	if filter.TunnelID > 0 {
-		query = query.Where("tunnel_id = ?", filter.TunnelID)
+		query = query.Where("rule_id = ?", filter.TunnelID)
 	}
 	if !filter.StartTime.IsZero() {
-		query = query.Where("recorded_at >= ?", filter.StartTime)
+		query = query.Where("hour >= ?", filter.StartTime)
 	}
 	if !filter.EndTime.IsZero() {
-		query = query.Where("recorded_at <= ?", filter.EndTime)
+		query = query.Where("hour <= ?", filter.EndTime)
 	}
-	
+
 	// 总数
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	
+
 	// 分页
 	if filter.PageSize <= 0 {
 		filter.PageSize = 20
@@ -133,17 +133,17 @@ func (r *TrafficRecordRepository) List(ctx context.Context, filter traffic.Recor
 		filter.Page = 1
 	}
 	offset := (filter.Page - 1) * filter.PageSize
-	
+
 	var models []models.TrafficRecord
-	if err := query.Offset(offset).Limit(filter.PageSize).Order("recorded_at DESC").Find(&models).Error; err != nil {
+	if err := query.Offset(offset).Limit(filter.PageSize).Order("hour DESC").Find(&models).Error; err != nil {
 		return nil, 0, err
 	}
-	
+
 	records := make([]*traffic.TrafficRecord, len(models))
 	for i, m := range models {
 		records[i] = toTrafficRecordEntity(&m)
 	}
-	
+
 	return records, total, nil
 }
 
@@ -153,22 +153,22 @@ func (r *TrafficRecordRepository) SumByUserID(ctx context.Context, userID uint, 
 		TotalIn  int64
 		TotalOut int64
 	}
-	
+
 	query := r.db.WithContext(ctx).Model(&models.TrafficRecord{}).
 		Select("COALESCE(SUM(traffic_in), 0) as total_in, COALESCE(SUM(traffic_out), 0) as total_out").
 		Where("user_id = ?", userID)
-	
+
 	if !start.IsZero() {
-		query = query.Where("recorded_at >= ?", start)
+		query = query.Where("hour >= ?", start)
 	}
 	if !end.IsZero() {
-		query = query.Where("recorded_at <= ?", end)
+		query = query.Where("hour <= ?", end)
 	}
-	
+
 	if err := query.Scan(&result).Error; err != nil {
 		return 0, 0, err
 	}
-	
+
 	return result.TotalIn, result.TotalOut, nil
 }
 
@@ -178,22 +178,22 @@ func (r *TrafficRecordRepository) SumByTunnelID(ctx context.Context, tunnelID ui
 		TotalIn  int64
 		TotalOut int64
 	}
-	
+
 	query := r.db.WithContext(ctx).Model(&models.TrafficRecord{}).
 		Select("COALESCE(SUM(traffic_in), 0) as total_in, COALESCE(SUM(traffic_out), 0) as total_out").
-		Where("tunnel_id = ?", tunnelID)
-	
+		Where("rule_id = ?", tunnelID)
+
 	if !start.IsZero() {
-		query = query.Where("recorded_at >= ?", start)
+		query = query.Where("hour >= ?", start)
 	}
 	if !end.IsZero() {
-		query = query.Where("recorded_at <= ?", end)
+		query = query.Where("hour <= ?", end)
 	}
-	
+
 	if err := query.Scan(&result).Error; err != nil {
 		return 0, 0, err
 	}
-	
+
 	return result.TotalIn, result.TotalOut, nil
 }
 
