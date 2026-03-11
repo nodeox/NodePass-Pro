@@ -12,7 +12,14 @@ import (
 const (
 	// 默认请求体大小限制：10MB
 	defaultMaxBodySize = 10 * 1024 * 1024
+
+	// 部署镜像上传允许更大的请求体（约 11GB）
+	deployAssetUploadMaxBodySize = 11 * 1024 * 1024 * 1024
 )
+
+var requestBodyLimitOverrides = map[string]int64{
+	"/api/v1/system/deploy-assets/upload": deployAssetUploadMaxBodySize,
+}
 
 // RequestBodyLimit 限制请求体大小的中间件。
 func RequestBodyLimit(maxSize int64) gin.HandlerFunc {
@@ -21,16 +28,21 @@ func RequestBodyLimit(maxSize int64) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		effectiveMaxSize := maxSize
+		if overrideSize, ok := requestBodyLimitOverrides[c.Request.URL.Path]; ok && overrideSize > effectiveMaxSize {
+			effectiveMaxSize = overrideSize
+		}
+
 		// 检查 Content-Length 头
-		if c.Request.ContentLength > maxSize {
+		if c.Request.ContentLength > effectiveMaxSize {
 			utils.Error(c, http.StatusRequestEntityTooLarge, "REQUEST_TOO_LARGE",
-				"请求体过大，最大允许 "+formatBytes(maxSize))
+				"请求体过大，最大允许 "+formatBytes(effectiveMaxSize))
 			c.Abort()
 			return
 		}
 
 		// 限制请求体读取大小
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSize)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, effectiveMaxSize)
 
 		c.Next()
 	}

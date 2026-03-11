@@ -255,6 +255,13 @@ var systemConfigValidators = map[string]func(string) (string, error){
 	"smtp_reply_to":                  normalizeOptionalEmail,
 	"smtp_encryption":                normalizeSMTPEncryption,
 	"smtp_skip_verify":               normalizeBooleanConfig,
+	"deploy_script_url":              normalizeOptionalText(2048),
+	"deploy_script_name":             normalizeOptionalText(255),
+	"deploy_script_updated_at":       normalizeOptionalText(64),
+	"deploy_script_command":          normalizeOptionalText(4096),
+	"deploy_image_url":               normalizeOptionalText(2048),
+	"deploy_image_name":              normalizeOptionalText(255),
+	"deploy_image_updated_at":        normalizeOptionalText(64),
 }
 
 func validateSiteName(value string) (string, error) {

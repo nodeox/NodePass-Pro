@@ -214,6 +214,9 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	announcementHandler := handlers.NewAnnouncementHandler(database.DB, wsHub)
 	auditHandler := handlers.NewAuditHandler(database.DB)
 
+	// 部署资源公共下载（无需登录）
+	r.GET("/api/v1/public/deploy-assets/:assetType/:fileName", systemHandler.DownloadDeployAsset)
+
 	if cfg := config.GlobalConfig; cfg != nil {
 		botToken := strings.TrimSpace(cfg.Telegram.BotToken)
 		if botToken != "" {
@@ -399,6 +402,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 			system.GET("/config", systemHandler.GetConfig)
 			system.PUT("/config", systemHandler.UpdateConfig)
 			system.GET("/stats", systemHandler.GetStats)
+			system.POST("/deploy-assets/upload", systemHandler.UploadDeployAsset)
 		}
 
 		adminTraffic := adminGroup.Group("/traffic")
