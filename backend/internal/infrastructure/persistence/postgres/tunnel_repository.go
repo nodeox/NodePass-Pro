@@ -201,21 +201,31 @@ func (r *TunnelRepository) BatchUpdateTraffic(ctx context.Context, data map[uint
 
 // toTunnelEntity 模型转实体
 func toTunnelEntity(m *models.Tunnel) *tunnel.Tunnel {
+	description := ""
+	if m.Description != nil {
+		description = *m.Description
+	}
+
+	var exitNodeID uint
+	if m.ExitGroupID != nil {
+		exitNodeID = *m.ExitGroupID
+	}
+
 	return &tunnel.Tunnel{
 		ID:          m.ID,
 		UserID:      m.UserID,
 		Name:        m.Name,
-		Description: m.Description,
+		Description: description,
 		Protocol:    m.Protocol,
-		Mode:        m.Mode,
+		Mode:        "single", // 默认模式
 		ListenHost:  m.ListenHost,
 		ListenPort:  m.ListenPort,
-		TargetHost:  m.TargetHost,
-		TargetPort:  m.TargetPort,
-		EntryNodeID: m.EntryNodeID,
-		ExitNodeID:  m.ExitNodeID,
-		Status:      m.Status,
-		IsEnabled:   m.IsEnabled,
+		TargetHost:  m.RemoteHost,
+		TargetPort:  m.RemotePort,
+		EntryNodeID: m.EntryGroupID,
+		ExitNodeID:  exitNodeID,
+		Status:      string(m.Status),
+		IsEnabled:   true, // 默认启用
 		TrafficIn:   m.TrafficIn,
 		TrafficOut:  m.TrafficOut,
 		CreatedAt:   m.CreatedAt,
@@ -225,24 +235,32 @@ func toTunnelEntity(m *models.Tunnel) *tunnel.Tunnel {
 
 // toTunnelModel 实体转模型
 func toTunnelModel(t *tunnel.Tunnel) *models.Tunnel {
+	var description *string
+	if t.Description != "" {
+		description = &t.Description
+	}
+
+	var exitGroupID *uint
+	if t.ExitNodeID > 0 {
+		exitGroupID = &t.ExitNodeID
+	}
+
 	return &models.Tunnel{
-		ID:          t.ID,
-		UserID:      t.UserID,
-		Name:        t.Name,
-		Description: t.Description,
-		Protocol:    t.Protocol,
-		Mode:        t.Mode,
-		ListenHost:  t.ListenHost,
-		ListenPort:  t.ListenPort,
-		TargetHost:  t.TargetHost,
-		TargetPort:  t.TargetPort,
-		EntryNodeID: t.EntryNodeID,
-		ExitNodeID:  t.ExitNodeID,
-		Status:      t.Status,
-		IsEnabled:   t.IsEnabled,
-		TrafficIn:   t.TrafficIn,
-		TrafficOut:  t.TrafficOut,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
+		ID:           t.ID,
+		UserID:       t.UserID,
+		Name:         t.Name,
+		Description:  description,
+		EntryGroupID: t.EntryNodeID,
+		ExitGroupID:  exitGroupID,
+		Protocol:     t.Protocol,
+		ListenHost:   t.ListenHost,
+		ListenPort:   t.ListenPort,
+		RemoteHost:   t.TargetHost,
+		RemotePort:   t.TargetPort,
+		Status:       models.TunnelStatus(t.Status),
+		TrafficIn:    t.TrafficIn,
+		TrafficOut:   t.TrafficOut,
+		CreatedAt:    t.CreatedAt,
+		UpdatedAt:    t.UpdatedAt,
 	}
 }

@@ -23,7 +23,13 @@ import (
 	"nodepass-pro/backend/internal/version"
 	panelws "nodepass-pro/backend/internal/websocket"
 
+	// 新架构 DDD 模块
+	"nodepass-pro/backend/internal/infrastructure/container"
+	nodeCommands "nodepass-pro/backend/internal/application/node/commands"
+	trafficCommands "nodepass-pro/backend/internal/application/traffic/commands"
+
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
@@ -82,8 +88,22 @@ func main() {
 		}
 	}()
 
-	router, _ := setupRouter(licenseManager)
-	taskScheduler, err := startCronTasks()
+	// 初始化新架构 DI 容器
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	appContainer := container.NewContainer(database.DB, redisClient)
+	defer func() {
+		if closeErr := appContainer.Close(); closeErr != nil {
+			zap.L().Warn("容器关闭失败", zap.Error(closeErr))
+		}
+	}()
+	zap.L().Info("DDD 架构容器初始化成功")
+
+	router, _ := setupRouter(licenseManager, appContainer)
+	taskScheduler, err := startCronTasks(appContainer)
 	if err != nil {
 		zap.L().Fatal("定时任务注册失败", zap.Error(err))
 	}
@@ -149,7 +169,7 @@ func validateSecurityConfig(cfg *config.Config) error {
 	return nil
 }
 
-func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
+func setupRouter(licenseManager *license.Manager, appContainer *container.Container) (*gin.Engine, *panelws.Hub) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID()) // 请求 ID 追踪（必须在最前面）
@@ -250,6 +270,49 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 		middleware.HeartbeatRateLimit(2, 20),   // 按 node_id 限流，回退 IP
 		middleware.HeartbeatReplayProtection(), // 防重放攻击
 		nodeInstanceHandler.Heartbeat)
+
+	// ==================== 新架构路由（DDD + CQRS）====================
+	// 新架构心跳接口（v2）- 使用 Redis 缓冲 + 批量写入
+	api.POST("/node-instances/heartbeat/v2",
+		middleware.HeartbeatRateLimit(2, 20),
+		middleware.HeartbeatReplayProtection(),
+		func(c *gin.Context) {
+			var req struct {
+				NodeID            string  `json:"node_id" binding:"required"`
+				Status            string  `json:"status"`
+				CPUUsage          float64 `json:"cpu_usage"`
+				MemoryUsage       float64 `json:"memory_usage"`
+				DiskUsage         float64 `json:"disk_usage"`
+				NetworkInBytes    int64   `json:"network_in_bytes"`
+				NetworkOutBytes   int64   `json:"network_out_bytes"`
+				ActiveConnections int     `json:"active_connections"`
+				ConfigVersion     int     `json:"config_version"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				utils.Error(c, http.StatusBadRequest, "参数错误", err.Error())
+				return
+			}
+
+			cmd := nodeCommands.HeartbeatCommand{
+				NodeID:            req.NodeID,
+				Status:            req.Status,
+				CPUUsage:          req.CPUUsage,
+				MemoryUsage:       req.MemoryUsage,
+				DiskUsage:         req.DiskUsage,
+				NetworkInBytes:    req.NetworkInBytes,
+				NetworkOutBytes:   req.NetworkOutBytes,
+				ActiveConnections: req.ActiveConnections,
+				ConfigVersion:     req.ConfigVersion,
+			}
+
+			result, err := appContainer.HeartbeatHandler.Handle(c.Request.Context(), cmd)
+			if err != nil {
+				utils.Error(c, http.StatusInternalServerError, "心跳处理失败", err.Error())
+				return
+			}
+
+			utils.Success(c, result)
+		})
 
 	authGroup := api.Group("")
 	authGroup.Use(middleware.AuthMiddleware())
@@ -499,7 +562,7 @@ func setupRouter(licenseManager *license.Manager) (*gin.Engine, *panelws.Hub) {
 	return r, wsHub
 }
 
-func startCronTasks() (*cron.Cron, error) {
+func startCronTasks(appContainer *container.Container) (*cron.Cron, error) {
 	if database.DB == nil {
 		return nil, fmt.Errorf("数据库未初始化")
 	}
@@ -671,6 +734,53 @@ func startCronTasks() (*cron.Cron, error) {
 			return runErr
 		}
 		zap.L().Info("性能汇总清理完成", zap.Int64("deleted_rows", rows))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// ==================== 新架构定时任务 ====================
+	// 心跳缓冲刷新 - 每分钟执行一次
+	if err := addTask("0 * * * * *", "heartbeat.flush_buffer", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if runErr := appContainer.HeartbeatHandler.FlushHeartbeats(ctx); runErr != nil {
+			return runErr
+		}
+		zap.L().Debug("心跳缓冲刷新完成")
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 离线节点检测 - 每 30 秒执行一次（基于 Redis TTL）
+	if err := addTask("*/30 * * * * *", "node.detect_offline_v2", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		offlineCount, runErr := appContainer.HeartbeatHandler.DetectOfflineNodes(ctx)
+		if runErr != nil {
+			return runErr
+		}
+		if offlineCount > 0 {
+			zap.L().Info("检测到离线节点", zap.Int64("count", offlineCount))
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	// 流量统计同步 - 每小时执行一次
+	if err := addTask("0 0 * * * *", "traffic.sync_to_db", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		cmd := trafficCommands.FlushTrafficCommand{}
+		if _, runErr := appContainer.FlushTrafficHandler.Handle(ctx, cmd); runErr != nil {
+			return runErr
+		}
+		zap.L().Info("流量统计同步完成")
 		return nil
 	}); err != nil {
 		return nil, err

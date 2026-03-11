@@ -17,12 +17,14 @@ type InstanceRepository interface {
 	// 批量操作
 	FindByGroupID(ctx context.Context, groupID uint) ([]*NodeInstance, error)
 	FindByIDs(ctx context.Context, ids []uint) ([]*NodeInstance, error)
+	FindAll(ctx context.Context) ([]*NodeInstance, error)
 	List(ctx context.Context, filter InstanceListFilter) ([]*NodeInstance, int64, error)
-	
+
 	// 业务查询
 	FindOnlineNodes(ctx context.Context) ([]*NodeInstance, error)
 	FindOfflineNodes(ctx context.Context, timeout time.Duration) ([]*NodeInstance, error)
 	CountByStatus(ctx context.Context, status string) (int64, error)
+	UpdateStatus(ctx context.Context, nodeID string, status string) error
 	
 	// 心跳相关
 	UpdateHeartbeat(ctx context.Context, nodeID string, data *HeartbeatData) error

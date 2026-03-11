@@ -71,10 +71,10 @@ func (r *NodeInstanceRepository) Delete(ctx context.Context, id uint) error {
 // FindByGroupID 根据组 ID 查找节点实例
 func (r *NodeInstanceRepository) FindByGroupID(ctx context.Context, groupID uint) ([]*node.NodeInstance, error) {
 	var models []models.NodeInstance
-	if err := r.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&models).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("node_group_id = ?", groupID).Find(&models).Error; err != nil {
 		return nil, err
 	}
-	
+
 	instances := make([]*node.NodeInstance, len(models))
 	for i, m := range models {
 		instances[i] = toNodeInstanceEntity(&m)
@@ -188,17 +188,10 @@ func (r *NodeInstanceRepository) CountByStatus(ctx context.Context, status strin
 func (r *NodeInstanceRepository) UpdateHeartbeat(ctx context.Context, nodeID string, data *node.HeartbeatData) error {
 	updates := map[string]interface{}{
 		"last_heartbeat_at": data.Timestamp,
-		"cpu_usage":         data.CPUUsage,
-		"memory_usage":      data.MemoryUsage,
-		"disk_usage":        data.DiskUsage,
-		"traffic_in":        data.TrafficIn,
-		"traffic_out":       data.TrafficOut,
-		"active_rules":      data.ActiveRules,
 		"config_version":    data.ConfigVersion,
-		"client_version":    data.ClientVersion,
 		"status":            "online",
 	}
-	
+
 	return r.db.WithContext(ctx).Model(&models.NodeInstance{}).
 		Where("node_id = ?", nodeID).
 		Updates(updates).Error
@@ -209,22 +202,15 @@ func (r *NodeInstanceRepository) BatchUpdateHeartbeat(ctx context.Context, data 
 	if len(data) == 0 {
 		return nil
 	}
-	
+
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, hb := range data {
 			updates := map[string]interface{}{
 				"last_heartbeat_at": hb.Timestamp,
-				"cpu_usage":         hb.CPUUsage,
-				"memory_usage":      hb.MemoryUsage,
-				"disk_usage":        hb.DiskUsage,
-				"traffic_in":        hb.TrafficIn,
-				"traffic_out":       hb.TrafficOut,
-				"active_rules":      hb.ActiveRules,
 				"config_version":    hb.ConfigVersion,
-				"client_version":    hb.ClientVersion,
 				"status":            "online",
 			}
-			
+
 			if err := tx.Model(&models.NodeInstance{}).
 				Where("node_id = ?", hb.NodeID).
 				Updates(updates).Error; err != nil {
@@ -248,25 +234,38 @@ func (r *NodeInstanceRepository) MarkOfflineByTimeout(ctx context.Context, timeo
 	return result.RowsAffected, nil
 }
 
+// FindAll 查找所有节点实例
+func (r *NodeInstanceRepository) FindAll(ctx context.Context) ([]*node.NodeInstance, error) {
+	var models []models.NodeInstance
+	if err := r.db.WithContext(ctx).Find(&models).Error; err != nil {
+		return nil, err
+	}
+
+	instances := make([]*node.NodeInstance, len(models))
+	for i, m := range models {
+		instances[i] = toNodeInstanceEntity(&m)
+	}
+	return instances, nil
+}
+
+// UpdateStatus 更新节点状态
+func (r *NodeInstanceRepository) UpdateStatus(ctx context.Context, nodeID string, status string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.NodeInstance{}).
+		Where("node_id = ?", nodeID).
+		Update("status", status).Error
+}
+
 // toNodeInstanceEntity 模型转实体
 func toNodeInstanceEntity(m *models.NodeInstance) *node.NodeInstance {
 	return &node.NodeInstance{
 		ID:              m.ID,
-		GroupID:         m.GroupID,
+		GroupID:         m.NodeGroupID,
 		NodeID:          m.NodeID,
-		ServiceName:     m.ServiceName,
-		Status:          m.Status,
-		ConnectionAddr:  m.ConnectionAddr,
-		ExitNetwork:     m.ExitNetwork,
+		ServiceName:     m.Name,
+		Status:          string(m.Status),
 		LastHeartbeatAt: m.LastHeartbeatAt,
 		ConfigVersion:   m.ConfigVersion,
-		ClientVersion:   m.ClientVersion,
-		CPUUsage:        m.CPUUsage,
-		MemoryUsage:     m.MemoryUsage,
-		DiskUsage:       m.DiskUsage,
-		TrafficIn:       m.TrafficIn,
-		TrafficOut:      m.TrafficOut,
-		ActiveRules:     m.ActiveRules,
 		CreatedAt:       m.CreatedAt,
 		UpdatedAt:       m.UpdatedAt,
 	}
@@ -276,21 +275,12 @@ func toNodeInstanceEntity(m *models.NodeInstance) *node.NodeInstance {
 func toNodeInstanceModel(n *node.NodeInstance) *models.NodeInstance {
 	return &models.NodeInstance{
 		ID:              n.ID,
-		GroupID:         n.GroupID,
+		NodeGroupID:     n.GroupID,
 		NodeID:          n.NodeID,
-		ServiceName:     n.ServiceName,
-		Status:          n.Status,
-		ConnectionAddr:  n.ConnectionAddr,
-		ExitNetwork:     n.ExitNetwork,
+		Name:            n.ServiceName,
+		Status:          models.NodeInstanceStatus(n.Status),
 		LastHeartbeatAt: n.LastHeartbeatAt,
 		ConfigVersion:   n.ConfigVersion,
-		ClientVersion:   n.ClientVersion,
-		CPUUsage:        n.CPUUsage,
-		MemoryUsage:     n.MemoryUsage,
-		DiskUsage:       n.DiskUsage,
-		TrafficIn:       n.TrafficIn,
-		TrafficOut:      n.TrafficOut,
-		ActiveRules:     n.ActiveRules,
 		CreatedAt:       n.CreatedAt,
 		UpdatedAt:       n.UpdatedAt,
 	}

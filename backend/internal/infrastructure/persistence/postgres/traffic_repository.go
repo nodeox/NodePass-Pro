@@ -199,7 +199,7 @@ func (r *TrafficRecordRepository) SumByTunnelID(ctx context.Context, tunnelID ui
 
 // DeleteOldRecords 删除旧记录
 func (r *TrafficRecordRepository) DeleteOldRecords(ctx context.Context, before time.Time) (int64, error) {
-	result := r.db.WithContext(ctx).Where("recorded_at < ?", before).Delete(&models.TrafficRecord{})
+	result := r.db.WithContext(ctx).Where("hour < ?", before).Delete(&models.TrafficRecord{})
 	if result.Error != nil {
 		return 0, result.Error
 	}
@@ -208,26 +208,36 @@ func (r *TrafficRecordRepository) DeleteOldRecords(ctx context.Context, before t
 
 // toTrafficRecordEntity 模型转实体
 func toTrafficRecordEntity(m *models.TrafficRecord) *traffic.TrafficRecord {
+	var tunnelID uint
+	if m.RuleID != nil {
+		tunnelID = *m.RuleID
+	}
+
 	return &traffic.TrafficRecord{
 		ID:         m.ID,
 		UserID:     m.UserID,
-		TunnelID:   m.TunnelID,
+		TunnelID:   tunnelID,
 		TrafficIn:  m.TrafficIn,
 		TrafficOut: m.TrafficOut,
-		RecordedAt: m.RecordedAt,
+		RecordedAt: m.Hour,
 		CreatedAt:  m.CreatedAt,
 	}
 }
 
 // toTrafficRecordModel 实体转模型
 func toTrafficRecordModel(r *traffic.TrafficRecord) *models.TrafficRecord {
+	var ruleID *uint
+	if r.TunnelID > 0 {
+		ruleID = &r.TunnelID
+	}
+
 	return &models.TrafficRecord{
 		ID:         r.ID,
 		UserID:     r.UserID,
-		TunnelID:   r.TunnelID,
+		RuleID:     ruleID,
 		TrafficIn:  r.TrafficIn,
 		TrafficOut: r.TrafficOut,
-		RecordedAt: r.RecordedAt,
+		Hour:       r.RecordedAt,
 		CreatedAt:  r.CreatedAt,
 	}
 }
