@@ -1,7 +1,9 @@
 package metrics
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -13,30 +15,30 @@ import (
 // Collector 定义 Prometheus 指标收集器。
 type Collector struct {
 	// 心跳相关指标
-	heartbeatStatus    prometheus.Gauge
-	heartbeatTotal     prometheus.Counter
-	heartbeatFailures  prometheus.Counter
-	configVersion      prometheus.Gauge
-	lastHeartbeatTime  prometheus.Gauge
+	heartbeatStatus   prometheus.Gauge
+	heartbeatTotal    prometheus.Counter
+	heartbeatFailures prometheus.Counter
+	configVersion     prometheus.Gauge
+	lastHeartbeatTime prometheus.Gauge
 
 	// 规则相关指标
-	rulesTotal         prometheus.Gauge
-	rulesRunning       prometheus.Gauge
-	rulesStopped       prometheus.Gauge
-	rulesError         prometheus.Gauge
-	ruleRestarts       *prometheus.CounterVec
+	rulesTotal   prometheus.Gauge
+	rulesRunning prometheus.Gauge
+	rulesStopped prometheus.Gauge
+	rulesError   prometheus.Gauge
+	ruleRestarts *prometheus.CounterVec
 
 	// 流量相关指标
-	trafficInBytes     *prometheus.CounterVec
-	trafficOutBytes    *prometheus.CounterVec
-	activeConnections  *prometheus.GaugeVec
+	trafficInBytes    *prometheus.CounterVec
+	trafficOutBytes   *prometheus.CounterVec
+	activeConnections *prometheus.GaugeVec
 
 	// 系统相关指标
-	cpuUsage           prometheus.Gauge
-	memoryUsage        prometheus.Gauge
-	diskUsage          prometheus.Gauge
-	bandwidthInBytes   prometheus.Gauge
-	bandwidthOutBytes  prometheus.Gauge
+	cpuUsage          prometheus.Gauge
+	memoryUsage       prometheus.Gauge
+	diskUsage         prometheus.Gauge
+	bandwidthInBytes  prometheus.Gauge
+	bandwidthOutBytes prometheus.Gauge
 
 	registry *prometheus.Registry
 	server   *http.Server
@@ -196,9 +198,14 @@ func (c *Collector) Start(addr string) error {
 		Handler: mux,
 	}
 
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("监听 Prometheus metrics 地址失败: %w", err)
+	}
+
 	go func() {
 		c.logger.Printf("[INFO] Prometheus metrics 服务已启动: %s", addr)
-		if err := c.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := c.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			c.logger.Printf("[ERROR] Prometheus metrics 服务异常: %v", err)
 		}
 	}()

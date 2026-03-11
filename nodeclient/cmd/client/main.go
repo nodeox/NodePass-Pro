@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"nodepass-pro/nodeclient/internal/agent"
-	"nodepass-pro/nodeclient/internal/config"
+	"nodepass-pro/nodeclient/internal/infra/config"
 )
 
 func main() {

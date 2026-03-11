@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -166,5 +168,128 @@ func TestManagerStartStopCycle(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("Start() did not return after Shutdown()")
+	}
+}
+
+func TestManagerStartOfflineWithCacheSyncsCurrentConfig(t *testing.T) {
+	cfg := &config.Config{
+		HubURL:              "http://invalid-url-that-will-fail:99999",
+		NodeID:              "test-node",
+		NodeToken:           "test-token",
+		CachePath:           t.TempDir() + "/cache.json",
+		HeartbeatInterval:   30,
+		ConfigCheckInterval: 60,
+	}
+
+	cache := config.NewConfigCache(cfg.CachePath)
+	cached := &domainconfig.NodeConfig{
+		ConfigVersion: 7,
+		Rules:         []domainconfig.RuleConfig{},
+	}
+	if err := cache.Save(cached); err != nil {
+		t.Fatalf("Failed to save cached config: %v", err)
+	}
+
+	mgrIface := NewManager(cfg, "1.0.0-test")
+	mgrImpl, ok := mgrIface.(*manager)
+	if !ok {
+		t.Fatalf("unexpected manager type: %T", mgrIface)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mgrIface.Start()
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		current := mgrImpl.configManager.GetCurrent()
+		if current != nil {
+			if current.ConfigVersion != 7 {
+				t.Fatalf("expected current config version 7, got %d", current.ConfigVersion)
+			}
+			if got := mgrImpl.configManager.GetVersion(); got != 7 {
+				t.Fatalf("expected manager version 7, got %d", got)
+			}
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if mgrImpl.configManager.GetCurrent() == nil {
+		t.Fatal("expected current config to be set after applying cached config")
+	}
+
+	mgrIface.Shutdown()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Start() returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return after Shutdown()")
+	}
+}
+
+func TestManagerStartOnlineBootstrapSyncsCurrentConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/node-instances/heartbeat" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"config_updated":false,"new_config_version":0},"message":"ok","timestamp":"2026-03-10T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		HubURL:              server.URL,
+		NodeID:              "test-node",
+		NodeToken:           "test-token",
+		CachePath:           t.TempDir() + "/cache.json",
+		HeartbeatInterval:   30,
+		ConfigCheckInterval: 60,
+	}
+
+	mgrIface := NewManager(cfg, "1.0.0-test")
+	mgrImpl, ok := mgrIface.(*manager)
+	if !ok {
+		t.Fatalf("unexpected manager type: %T", mgrIface)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mgrIface.Start()
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		current := mgrImpl.configManager.GetCurrent()
+		if current != nil {
+			if current.ConfigVersion != 0 {
+				t.Fatalf("expected bootstrap config version 0, got %d", current.ConfigVersion)
+			}
+			if got := mgrImpl.configManager.GetVersion(); got != 0 {
+				t.Fatalf("expected manager version 0, got %d", got)
+			}
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if mgrImpl.configManager.GetCurrent() == nil {
+		t.Fatal("expected bootstrap config to be tracked in config manager")
+	}
+
+	mgrIface.Shutdown()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Start() returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return after Shutdown()")
 	}
 }

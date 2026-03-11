@@ -115,7 +115,7 @@ func (m *manager) Start() error {
 		if cachedConfig == nil {
 			return fmt.Errorf("无缓存配置，无法启动")
 		}
-		if applyErr := m.rulesManager.ApplyConfig(cachedConfig); applyErr != nil {
+		if applyErr := m.applyConfigAndTrackState(cachedConfig, cachedConfig.ConfigVersion); applyErr != nil {
 			return fmt.Errorf("应用缓存配置失败: %w", applyErr)
 		}
 		m.setOnline(false)
@@ -125,7 +125,7 @@ func (m *manager) Start() error {
 		current := m.configManager.GetCurrent()
 		if current == nil {
 			if cachedConfig != nil {
-				if applyErr := m.rulesManager.ApplyConfig(cachedConfig); applyErr != nil {
+				if applyErr := m.applyConfigAndTrackState(cachedConfig, cachedConfig.ConfigVersion); applyErr != nil {
 					return fmt.Errorf("应用缓存配置失败: %w", applyErr)
 				}
 				m.logger.Info("在线模式: 面板可用，使用缓存配置启动", "version", cachedConfig.ConfigVersion)
@@ -138,12 +138,8 @@ func (m *manager) Start() error {
 						ConfigCheckInterval: m.config.ConfigCheckInterval,
 					},
 				}
-				if applyErr := m.rulesManager.ApplyConfig(bootstrap); applyErr != nil {
+				if applyErr := m.applyConfigAndTrackState(bootstrap, bootstrap.ConfigVersion); applyErr != nil {
 					return fmt.Errorf("应用启动空配置失败: %w", applyErr)
-				}
-				configCache := config.NewConfigCache(m.config.CachePath)
-				if saveErr := configCache.Save(bootstrap); saveErr != nil {
-					m.logger.Warn("保存启动空配置失败", "error", saveErr)
 				}
 				m.logger.Info("在线模式: 启动空配置", "version", bootstrap.ConfigVersion)
 			}
@@ -224,6 +220,17 @@ func (m *manager) handleConfigUpdate(cfg *domainconfig.NodeConfig, version int) 
 	}
 }
 
+// applyConfigAndTrackState 在应用配置成功后同步配置管理器状态与心跳版本。
+func (m *manager) applyConfigAndTrackState(cfg *domainconfig.NodeConfig, version int) error {
+	return m.configManager.HandleUpdate(cfg, version, func(nextConfig *domainconfig.NodeConfig) error {
+		if err := m.rulesManager.ApplyConfig(nextConfig); err != nil {
+			return err
+		}
+		m.heartbeatCoordinator.SetCurrentConfigVersion(nextConfig.ConfigVersion)
+		return nil
+	})
+}
+
 // SnapshotHeartbeatMetrics 实现 RuntimeMetricsProvider 接口。
 func (m *manager) SnapshotHeartbeatMetrics() (trafficIn int64, trafficOut int64, activeConnections int64) {
 	stats := m.rulesManager.GetTrafficStats()
@@ -254,13 +261,10 @@ func (m *manager) Shutdown() {
 		m.waitGroup.Wait()
 
 		if m.logger != nil {
-			if err := m.logger.Close(); err != nil {
-				m.logger.Warn("关闭日志器失败", "error", err)
-			}
-		}
-
-		if m.logger != nil {
 			m.logger.Info("Manager 已停止")
+			if err := m.logger.Close(); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "[nodeclient] 关闭日志器失败: %v\n", err)
+			}
 		}
 	})
 }
